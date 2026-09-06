@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dhruv.zillowagent</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <string>export FLIP_GMAIL_APP_PASSWORD=$(security find-generic-password -a darup67@gmail.com -s flip-notifier-gmail -w 2>/dev/null); exec /Users/dhruvpatel/.local/bin/node /Users/dhruvpatel/zillow-agent/zillow-agent.js</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/dhruvpatel/zillow-agent</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/dhruvpatel/zillow-agent/launchd.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/dhruvpatel/zillow-agent/launchd.err.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

@@ -1,0 +1,15 @@
+# Runtime state — rebuilt on every run, changes daily
+state.json
+state.backup.json
+
+# Logs
+*.log
+
+# Dry-run output
+preview.html
+
+# Local config backups
+config.*.json
+config.json.bak
+
+.DS_Store
