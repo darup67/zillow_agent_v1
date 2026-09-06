@@ -1,0 +1,143 @@
+{
+  "_comment": "Zillow Agent config. Edit freely, then run: node ~/zillow-agent/zillow-agent.js --dry-run",
+  "email": {
+    "to": "darup67@gmail.com",
+    "subjectPrefix": "Atlanta Market Digest",
+    "sendWhenNothingNew": false
+  },
+  "markets": [
+    {
+      "name": "Intown East",
+      "zips": [
+        "30307",
+        "30316",
+        "30317",
+        "30306"
+      ]
+    },
+    {
+      "name": "Westside",
+      "zips": [
+        "30318",
+        "30310",
+        "30314",
+        "30311"
+      ]
+    },
+    {
+      "name": "South Intown",
+      "zips": [
+        "30312",
+        "30315",
+        "30354"
+      ]
+    },
+    {
+      "name": "South Metro",
+      "zips": [
+        "30337",
+        "30344"
+      ]
+    },
+    {
+      "name": "Gwinnett County",
+      "zips": [
+        "30011",
+        "30017",
+        "30019",
+        "30024",
+        "30039",
+        "30043",
+        "30044",
+        "30045",
+        "30046",
+        "30047",
+        "30071",
+        "30078",
+        "30087",
+        "30092",
+        "30093",
+        "30096",
+        "30097",
+        "30518",
+        "30519"
+      ]
+    },
+    {
+      "name": "Hall County",
+      "zips": [
+        "30501",
+        "30504",
+        "30506",
+        "30507",
+        "30527",
+        "30542",
+        "30543",
+        "30554",
+        "30564",
+        "30566"
+      ]
+    },
+    {
+      "name": "Jackson County",
+      "zips": [
+        "30517",
+        "30529",
+        "30548",
+        "30549",
+        "30558",
+        "30565",
+        "30567",
+        "30575",
+        "30607"
+      ]
+    }
+  ],
+  "buyBox": {
+    "minPrice": 150000,
+    "maxPrice": 750000,
+    "minBeds": 2,
+    "minBaths": 1,
+    "minSqft": 700,
+    "maxSqft": null,
+    "minYearBuilt": 2005,
+    "maxYearBuilt": null,
+    "maxHoaMonthly": 500,
+    "maxPricePerSqft": null,
+    "maxDaysOnMarket": null,
+    "propertyTypes": [
+      "Single Family Residential",
+      "Townhouse",
+      "Condo/Co-op",
+      "Multi-Family (2-4 Unit)",
+      "Multi-Family (5+ Unit)"
+    ],
+    "excludeKeywords": [
+      "55+",
+      "Age Restricted"
+    ]
+  },
+  "signals": {
+    "newListings": true,
+    "priceCuts": true,
+    "priceIncreases": true,
+    "backOnMarket": true,
+    "statusChanges": true,
+    "openHouses": true,
+    "goneFromMarket": false
+  },
+  "dealScoring": {
+    "enabled": true,
+    "discountVsZipMedianPct": 8,
+    "priceCutMinPct": 2,
+    "staleDaysThreshold": 45,
+    "maxRowsPerSection": 30
+  },
+  "fetch": {
+    "maxHomesPerZip": 350,
+    "delayMsBetweenZips": 900,
+    "retries": 3,
+    "timeoutMs": 30000,
+    "delayMsBetweenTiles": 700
+  }
+}
