@@ -25,6 +25,7 @@ const { execFileSync } = require('child_process');
 const DIR = __dirname;
 const CONFIG_PATH = path.join(DIR, 'config.json');
 const STATE_PATH = path.join(DIR, 'state.json');
+const BACKUP_PATH = path.join(DIR, 'state.backup.json');
 const ZIPS_PATH = path.join(DIR, 'zips.tsv');
 const LOG_PATH = path.join(DIR, 'zillow-agent.log');
 
@@ -39,6 +40,30 @@ function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
   process.stdout.write(line);
   try { fs.appendFileSync(LOG_PATH, line); } catch {}
+}
+
+/**
+ * Roll the current state aside before anything overwrites or deletes it.
+ *
+ * State is the diff baseline: whatever it holds is what the NEXT run compares
+ * against, so overwriting it consumes the pending diff. An unplanned run
+ * therefore silently eats the day's changes with nothing to roll back to —
+ * on 2026-09-07 an ad-hoc 22:24 run had to be reversed by reconstructing the
+ * removals and pre-cut prices out of the digest email it had already sent.
+ *
+ * Keeps exactly one generation, which is all the daily cadence needs. Failure
+ * is logged, not fatal: losing the backup must never cost the run itself.
+ */
+function backupState() {
+  try {
+    if (fs.existsSync(STATE_PATH)) {
+      fs.copyFileSync(STATE_PATH, BACKUP_PATH);
+      return true;
+    }
+  } catch (e) {
+    log(`WARN could not back up state to ${BACKUP_PATH}: ${e.message}`);
+  }
+  return false;
 }
 
 /* ---------------------------------------------------------------- CSV parse */
@@ -460,8 +485,9 @@ async function main() {
   const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 
   if (ARGS.has('--reset')) {
+    const saved = backupState();
     try { fs.unlinkSync(STATE_PATH); } catch {}
-    log('state reset');
+    log(`state reset${saved ? ` (previous state kept in ${path.basename(BACKUP_PATH)})` : ''}`);
     return;
   }
 
@@ -533,8 +559,10 @@ async function main() {
   for (const l of unique) {
     newState.listings[l.id] = { price: l.price, status: l.status, dom: l.dom, address: l.address, zip: l.zip, url: l.url };
   }
+  const saved = backupState();
   fs.writeFileSync(STATE_PATH, JSON.stringify(newState));
-  log(`state saved (${unique.length} listings)`);
+  log(`state saved (${unique.length} listings)` +
+      `${saved ? ` · previous state kept in ${path.basename(BACKUP_PATH)}` : ''}`);
 }
 
 main().catch(e => { log(`FATAL: ${e.stack || e.message}`); process.exit(1); });
