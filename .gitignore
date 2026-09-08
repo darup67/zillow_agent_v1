@@ -13,3 +13,6 @@ config.*.json
 config.json.bak
 
 .DS_Store
+
+# Manual state snapshots (700KB of listing data — never commit)
+*.bak
