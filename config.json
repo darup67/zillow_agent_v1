@@ -1,5 +1,5 @@
 {
-  "_comment": "Zillow Agent config. Edit freely, then run: node ~/zillow-agent/zillow-agent.js --dry-run",
+  "_comment": "Zillow Agent config. Each entry in `searches` becomes its own section in the daily email. type: \"sale\" or \"rental\". Run: node zillow-agent.js --dry-run",
   "email": {
     "to": "darup67@gmail.com",
     "subjectPrefix": "Atlanta Market Digest",
@@ -93,30 +93,6 @@
       ]
     }
   ],
-  "buyBox": {
-    "minPrice": 150000,
-    "maxPrice": 750000,
-    "minBeds": 2,
-    "minBaths": 1,
-    "minSqft": 700,
-    "maxSqft": null,
-    "minYearBuilt": 2005,
-    "maxYearBuilt": null,
-    "maxHoaMonthly": 500,
-    "maxPricePerSqft": null,
-    "maxDaysOnMarket": null,
-    "propertyTypes": [
-      "Single Family Residential",
-      "Townhouse",
-      "Condo/Co-op",
-      "Multi-Family (2-4 Unit)",
-      "Multi-Family (5+ Unit)"
-    ],
-    "excludeKeywords": [
-      "55+",
-      "Age Restricted"
-    ]
-  },
   "signals": {
     "newListings": true,
     "priceCuts": true,
@@ -139,5 +115,82 @@
     "retries": 3,
     "timeoutMs": 30000,
     "delayMsBetweenTiles": 700
-  }
+  },
+  "searches": [
+    {
+      "id": "primary",
+      "name": "Primary buy box — houses 2005+",
+      "shortName": "primary",
+      "type": "sale",
+      "enabled": true,
+      "filters": {
+        "minPrice": 150000,
+        "maxPrice": 750000,
+        "minBeds": 2,
+        "minBaths": 1,
+        "minSqft": 700,
+        "maxSqft": null,
+        "minYearBuilt": 2005,
+        "maxYearBuilt": null,
+        "maxHoaMonthly": 500,
+        "maxPricePerSqft": null,
+        "maxDaysOnMarket": null,
+        "propertyTypes": [
+          "Single Family Residential",
+          "Townhouse",
+          "Condo/Co-op",
+          "Multi-Family (2-4 Unit)",
+          "Multi-Family (5+ Unit)"
+        ],
+        "excludeKeywords": [
+          "55+",
+          "Age Restricted"
+        ]
+      }
+    },
+    {
+      "id": "condos-small",
+      "name": "Condos & townhomes, 1–2 bedroom",
+      "shortName": "condos",
+      "type": "sale",
+      "enabled": true,
+      "filters": {
+        "minPrice": 100000,
+        "maxPrice": 450000,
+        "minBeds": 1,
+        "maxBeds": 2,
+        "minBaths": 1,
+        "minSqft": 450,
+        "maxSqft": null,
+        "minYearBuilt": null,
+        "maxYearBuilt": null,
+        "maxHoaMonthly": 700,
+        "maxPricePerSqft": null,
+        "maxDaysOnMarket": null,
+        "propertyTypes": [
+          "Condo/Co-op",
+          "Townhouse"
+        ],
+        "excludeKeywords": [
+          "55+",
+          "Age Restricted"
+        ]
+      }
+    },
+    {
+      "id": "rentals",
+      "name": "Rentals, 1–2 bedroom",
+      "shortName": "rentals",
+      "type": "rental",
+      "enabled": true,
+      "filters": {
+        "minBeds": 1,
+        "maxBeds": 2,
+        "minRent": 900,
+        "maxRent": 3000,
+        "minSqft": 450,
+        "requireAvailableUnits": true
+      }
+    }
+  ]
 }

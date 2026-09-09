@@ -5,8 +5,11 @@ Zero dependencies (Node core only). Same house style as `~/flip-notifier`.
 
 ## Status
 
-- **51 ZIPs** across 7 markets — ~10,000 active listings, **3,911 in the buy box**
-  (buy box: $150k–750k, built 2005+)
+- **51 ZIPs** across 7 markets — ~10,000 for-sale + ~3,250 rental listings
+  - Primary buy box (houses 2005+, $150k–750k): **3,934**
+  - Condos & townhomes 1–2BR ($100k–450k): **389**
+  - Rentals 1–2BR ($900–3,000/mo): **978**
+  - Full run ~3.5 min
   - Atlanta intown: Intown East (4), Westside (4), South Intown (3), South Metro (2)
   - Exurbs: **Gwinnett County (19)**, **Hall County (10)**, **Jackson County (9)**
 - Runs **daily at 7:30 AM** via launchd (`com.dhruv.zillowagent`); full run ~2.5 min
@@ -74,11 +77,33 @@ Named groups of ZIPs. Add/remove freely; any US ZIP works.
 ```
 Current: Intown East, Westside, South Intown, South Metro.
 
-### `buyBox` — which listings qualify
+### `searches` — one section per search
+
+The email renders **one top-level section per entry** in `searches`, each with its
+own filters and its own change history. Add or remove entries freely.
+
+| Field | Meaning |
+|---|---|
+| `id` | stable key for the state bucket — **do not rename**, it resets that section's baseline |
+| `name` | section heading in the email |
+| `shortName` | used in the subject line |
+| `type` | `"sale"` or `"rental"` |
+| `enabled` | set `false` to skip without deleting |
+| `filters` | the filter set below |
+
+Current searches: **Primary buy box** (houses 2005+), **Condos & townhomes 1–2BR**,
+and **Rentals 1–2BR**.
+
+For-sale data is fetched **once per ZIP and shared** across all `sale` searches, so
+adding another sale search costs no extra requests.
+
+### `filters` — which listings qualify
 | Key | Effect |
 |---|---|
 | `minPrice` / `maxPrice` | price band (currently 150k–750k) |
-| `minBeds` / `minBaths` | minimums |
+| `minBeds` / `maxBeds` / `minBaths` | bed and bath bounds |
+| `minRent` / `maxRent` | **rental only** — monthly rent band |
+| `requireAvailableUnits` | **rental only** — drop communities with 0 units available |
 | `minSqft` / `maxSqft` | size band |
 | `minYearBuilt` / `maxYearBuilt` | vintage filter (**currently minYearBuilt 2005**) |
 | `maxHoaMonthly` | drops high-HOA condos |
@@ -109,12 +134,24 @@ make it strict, remove the `l.yearBuilt != null &&` guard in `passesBuyBox()`.
 ### `email`
 `to`, `subjectPrefix`, and `sendWhenNothingNew` (false = stay quiet on flat days).
 
-## Email sections
+## Email layout
 
-1. **★ Best value** — new listings under their ZIP median $/sqft, sorted by discount
-2. **🔥 Motivated sellers** — stale listings that just took a cut
-3. **New listings** · **Price cuts** · **Price increases** · **Back on market** · **Status changes**
-4. **ZIP median $/sqft** — active-inventory context for every tracked ZIP
+A contents strip at the top shows each section's update count, then one block per
+search. Within a sale section: **★ Best value**, **🔥 Motivated sellers**, **New
+listings**, **Price cuts**, **Price increases**, **Back on market**, **Status
+changes**. Rental sections use **New rentals** / **Rent drops** / **Rent increases**
+and skip deal scoring (there is no $/sqft median for rentals). A section with
+nothing to report says "No changes today" rather than vanishing. **ZIP median
+$/sqft** closes the email.
+
+## Rentals
+
+Rentals come from Redfin's `api/v1/search/rentals` (JSON, not CSV). It returns
+every match inside the polygon in one response — `num_homes` is ignored — so no
+tiling is needed. Most results are apartment **communities** carrying ranges
+(1–2bd, $1,551–2,751, 6 units available) rather than single units, so rental rows
+render as ranges and match a bed filter on **overlap**: a 0–1bd community satisfies
+`minBeds: 1` because it contains 1-bed units.
 
 ## How change detection works
 
