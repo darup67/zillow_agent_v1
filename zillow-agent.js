@@ -276,25 +276,99 @@ function normalize(r) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+/* ---------------------------------------------------------------- rentals */
+
+// Rentals come from a different endpoint that returns JSON, not CSV, and are
+// mostly apartment COMMUNITIES with ranges (1-2bd, $1551-2751) rather than
+// single units. It returns everything inside the polygon in one response —
+// num_homes is ignored — so no tiling is needed.
+async function fetchRentalsZip(zip, cfg) {
+  const box = zipBox(zip);
+  if (!box) return [];
+  const qs = new URLSearchParams({
+    al: '1', num_homes: '350', poly: boxToPoly(box), v: '8',
+  });
+  const url = `https://www.redfin.com/stingray/api/v1/search/rentals?${qs}`;
+
+  for (let attempt = 1; attempt <= cfg.fetch.retries; attempt++) {
+    try {
+      const raw = await httpGet(url, cfg.fetch.timeoutMs);
+      const j = JSON.parse(raw.replace(/^\{\}&&/, ''));
+      const out = [];
+      for (const h of (j.homes || [])) {
+        const r = normalizeRental(h);
+        if (r && r.zip === zip) out.push(r);
+      }
+      return out;
+    } catch (e) {
+      if (attempt < cfg.fetch.retries) await sleep(1500 * Math.pow(2, attempt - 1));
+      else log(`  ! ${zip}: rental fetch failed (${e.message})`);
+    }
+  }
+  return [];
+}
+
+function normalizeRental(h) {
+  const d = h.homeData || {}, r = h.rentalExtension || {};
+  const a = d.addressInfo || {};
+  if (!r.rentalId && !d.propertyId) return null;
+  const rentMin = r.rentPriceRange?.min ?? null;
+  const rentMax = r.rentPriceRange?.max ?? null;
+  return {
+    kind: 'rental',
+    id: r.rentalId || `p${d.propertyId}`,
+    name: r.propertyName || a.formattedStreetLine || 'Rental',
+    address: a.formattedStreetLine || '',
+    city: a.city || '',
+    zip: String(a.zip || '').trim(),
+    bedMin: r.bedRange?.min ?? null,
+    bedMax: r.bedRange?.max ?? null,
+    bathMin: r.bathRange?.min ?? null,
+    sqftMin: r.sqftRange?.min ?? null,
+    sqftMax: r.sqftRange?.max ?? null,
+    rentMin, rentMax,
+    price: rentMin,                       // canonical field for diffing
+    units: r.numAvailableUnits ?? null,
+    status: String(r.status ?? ''),
+    url: d.url ? `https://www.redfin.com${d.url}` : null,
+  };
+}
+
 /* ------------------------------------------------------------- filtering */
 
-function passesBuyBox(l, bb) {
-  if (bb.minPrice != null && (l.price == null || l.price < bb.minPrice)) return false;
-  if (bb.maxPrice != null && (l.price == null || l.price > bb.maxPrice)) return false;
-  if (bb.minBeds != null && (l.beds == null || l.beds < bb.minBeds)) return false;
-  if (bb.minBaths != null && (l.baths == null || l.baths < bb.minBaths)) return false;
-  if (bb.minSqft != null && l.sqft != null && l.sqft < bb.minSqft) return false;
-  if (bb.maxSqft != null && l.sqft != null && l.sqft > bb.maxSqft) return false;
-  if (bb.minYearBuilt != null && l.yearBuilt != null && l.yearBuilt < bb.minYearBuilt) return false;
-  if (bb.maxYearBuilt != null && l.yearBuilt != null && l.yearBuilt > bb.maxYearBuilt) return false;
-  if (bb.maxHoaMonthly != null && l.hoa != null && l.hoa > bb.maxHoaMonthly) return false;
-  if (bb.maxPricePerSqft != null && l.ppsf != null && l.ppsf > bb.maxPricePerSqft) return false;
-  if (bb.maxDaysOnMarket != null && l.dom != null && l.dom > bb.maxDaysOnMarket) return false;
-  if (Array.isArray(bb.propertyTypes) && bb.propertyTypes.length &&
-      !bb.propertyTypes.includes(l.propertyType)) return false;
-  if (Array.isArray(bb.excludeKeywords)) {
+// One filter function for both kinds. A filter is skipped when the listing
+// lacks that field — better to show a listing than drop it over a blank field.
+function passesFilters(l, f) {
+  if (!f) return true;
+
+  if (l.kind === 'rental') {
+    // Bed ranges overlap-match: a 1-2bd community satisfies "1-2 bedrooms".
+    if (f.minBeds != null && l.bedMax != null && l.bedMax < f.minBeds) return false;
+    if (f.maxBeds != null && l.bedMin != null && l.bedMin > f.maxBeds) return false;
+    if (f.minRent != null && l.rentMax != null && l.rentMax < f.minRent) return false;
+    if (f.maxRent != null && l.rentMin != null && l.rentMin > f.maxRent) return false;
+    if (f.minSqft != null && l.sqftMax != null && l.sqftMax < f.minSqft) return false;
+    if (f.requireAvailableUnits && !(l.units > 0)) return false;
+    return true;
+  }
+
+  if (f.minPrice != null && (l.price == null || l.price < f.minPrice)) return false;
+  if (f.maxPrice != null && (l.price == null || l.price > f.maxPrice)) return false;
+  if (f.minBeds != null && (l.beds == null || l.beds < f.minBeds)) return false;
+  if (f.maxBeds != null && l.beds != null && l.beds > f.maxBeds) return false;
+  if (f.minBaths != null && (l.baths == null || l.baths < f.minBaths)) return false;
+  if (f.minSqft != null && l.sqft != null && l.sqft < f.minSqft) return false;
+  if (f.maxSqft != null && l.sqft != null && l.sqft > f.maxSqft) return false;
+  if (f.minYearBuilt != null && l.yearBuilt != null && l.yearBuilt < f.minYearBuilt) return false;
+  if (f.maxYearBuilt != null && l.yearBuilt != null && l.yearBuilt > f.maxYearBuilt) return false;
+  if (f.maxHoaMonthly != null && l.hoa != null && l.hoa > f.maxHoaMonthly) return false;
+  if (f.maxPricePerSqft != null && l.ppsf != null && l.ppsf > f.maxPricePerSqft) return false;
+  if (f.maxDaysOnMarket != null && l.dom != null && l.dom > f.maxDaysOnMarket) return false;
+  if (Array.isArray(f.propertyTypes) && f.propertyTypes.length &&
+      !f.propertyTypes.includes(l.propertyType)) return false;
+  if (Array.isArray(f.excludeKeywords)) {
     const hay = `${l.address} ${l.location || ''}`.toLowerCase();
-    for (const kw of bb.excludeKeywords) {
+    for (const kw of f.excludeKeywords) {
       if (kw && hay.includes(String(kw).toLowerCase())) return false;
     }
   }
@@ -310,20 +384,16 @@ function median(nums) {
   return a.length % 2 ? a[m] : Math.round((a[m - 1] + a[m]) / 2);
 }
 
-function diff(current, state, cfg) {
-  const prev = state.listings || {};
+// Diff one search's current listings against that search's own prior snapshot.
+function diff(current, prev, cfg) {
   const sig = cfg.signals;
   const cut = cfg.dealScoring.priceCutMinPct;
-
   const out = { new: [], priceCuts: [], priceIncreases: [], backOnMarket: [], statusChanges: [], gone: [] };
 
   for (const l of current) {
     const p = prev[l.id];
-    if (!p) {
-      // Genuinely new to us. On a first-ever run everything lands here.
-      if (sig.newListings) out.new.push(l);
-      continue;
-    }
+    if (!p) { if (sig.newListings) out.new.push(l); continue; }
+
     if (p.price != null && l.price != null && l.price !== p.price) {
       const pct = ((l.price - p.price) / p.price) * 100;
       if (Math.abs(pct) >= cut) {
@@ -342,16 +412,13 @@ function diff(current, state, cfg) {
 
   if (sig.goneFromMarket) {
     const seen = new Set(current.map(l => l.id));
-    for (const id of Object.keys(prev)) {
-      if (!seen.has(id)) out.gone.push(prev[id]);
-    }
+    for (const id of Object.keys(prev)) if (!seen.has(id)) out.gone.push(prev[id]);
   }
   return out;
 }
 
-// Deal flags: cheap vs ZIP median $/sqft, and stale-but-reduced (motivated seller).
-function scoreDeals(current, changes, cfg) {
-  if (!cfg.dealScoring.enabled) return { underMedian: [], motivated: [] };
+function scoreDeals(current, changes, cfg, enabled) {
+  if (!enabled || !cfg.dealScoring.enabled) return { underMedian: [], motivated: [], medians: new Map() };
 
   const byZip = new Map();
   for (const l of current) {
@@ -387,85 +454,128 @@ const esc = s => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 function detailLine(l) {
-  const bits = [];
-  if (l.beds != null) bits.push(`${l.beds}bd`);
-  if (l.baths != null) bits.push(`${l.baths}ba`);
-  if (l.sqft != null) bits.push(`${l.sqft.toLocaleString('en-US')} sqft`);
-  if (l.ppsf != null) bits.push(`$${l.ppsf}/sqft`);
-  if (l.yearBuilt != null) bits.push(`built ${l.yearBuilt}`);
-  if (l.dom != null) bits.push(`${l.dom}d on mkt`);
-  if (l.hoa != null && l.hoa > 0) bits.push(`HOA ${fmtMoney(l.hoa)}/mo`);
-  return bits.join(' &middot; ');
+  const b = [];
+  if (l.kind === 'rental') {
+    if (l.bedMin != null) b.push(l.bedMin === l.bedMax ? `${l.bedMin}bd` : `${l.bedMin}-${l.bedMax}bd`);
+    if (l.bathMin != null) b.push(`${l.bathMin}+ba`);
+    if (l.sqftMin != null) b.push(l.sqftMin === l.sqftMax
+      ? `${l.sqftMin.toLocaleString('en-US')} sqft`
+      : `${l.sqftMin.toLocaleString('en-US')}-${(l.sqftMax || 0).toLocaleString('en-US')} sqft`);
+    if (l.units != null) b.push(`${l.units} unit${l.units === 1 ? '' : 's'} avail`);
+    return b.join(' &middot; ');
+  }
+  if (l.beds != null) b.push(`${l.beds}bd`);
+  if (l.baths != null) b.push(`${l.baths}ba`);
+  if (l.sqft != null) b.push(`${l.sqft.toLocaleString('en-US')} sqft`);
+  if (l.ppsf != null) b.push(`$${l.ppsf}/sqft`);
+  if (l.yearBuilt != null) b.push(`built ${l.yearBuilt}`);
+  if (l.dom != null) b.push(`${l.dom}d on mkt`);
+  if (l.hoa != null && l.hoa > 0) b.push(`HOA ${fmtMoney(l.hoa)}/mo`);
+  return b.join(' &middot; ');
+}
+
+function priceCell(l) {
+  let main;
+  if (l.kind === 'rental') {
+    main = l.rentMin == null ? '—'
+      : (l.rentMin === l.rentMax || l.rentMax == null)
+        ? `${fmtMoney(l.rentMin)}/mo`
+        : `${fmtMoney(l.rentMin)}–${fmtMoney(l.rentMax)}/mo`;
+  } else main = fmtMoney(l.price);
+
+  let out = `<strong>${main}</strong>`;
+  if (l.prevPrice != null) {
+    const arrow = l.changePct < 0 ? '&#9660;' : '&#9650;';
+    const color = l.changePct < 0 ? '#1a7f37' : '#b35900';
+    out += `<div style="color:${color};font-size:12px">${arrow} ${Math.abs(l.changePct).toFixed(1)}% ` +
+           `from ${fmtMoney(l.prevPrice)}</div>`;
+  }
+  return out;
 }
 
 function tableFor(listings, cfg, opts = {}) {
-  const rows = listings.slice(0, cfg.dealScoring.maxRowsPerSection).map(l => {
-    let priceCell = `<strong>${fmtMoney(l.price)}</strong>`;
-    if (l.prevPrice != null) {
-      const arrow = l.changePct < 0 ? '&#9660;' : '&#9650;';
-      const color = l.changePct < 0 ? '#1a7f37' : '#b35900';
-      priceCell = `<strong>${fmtMoney(l.price)}</strong>` +
-        `<div style="color:${color};font-size:12px">${arrow} ${Math.abs(l.changePct).toFixed(1)}% ` +
-        `from ${fmtMoney(l.prevPrice)}</div>`;
-    }
+  const cap = cfg.dealScoring.maxRowsPerSection;
+  const rows = listings.slice(0, cap).map(l => {
     let badge = '';
     if (opts.showDiscount && l.discountPct != null) {
-      badge = `<div style="font-size:12px;color:#1a7f37">${l.discountPct.toFixed(0)}% under ` +
-              `ZIP median ($${l.zipMedianPpsf}/sqft)</div>`;
+      badge += `<div style="font-size:12px;color:#1a7f37">${l.discountPct.toFixed(0)}% under ` +
+               `ZIP median ($${l.zipMedianPpsf}/sqft)</div>`;
     }
-    if (l.prevStatus) {
-      badge += `<div style="font-size:12px;color:#555">${esc(l.prevStatus)} &rarr; ${esc(l.status)}</div>`;
-    }
-    if (l.openHouse) {
-      badge += `<div style="font-size:12px;color:#0b62c4">Open house: ${esc(l.openHouse)}</div>`;
-    }
+    if (l.prevStatus) badge += `<div style="font-size:12px;color:#555">${esc(l.prevStatus)} &rarr; ${esc(l.status)}</div>`;
+    if (l.openHouse) badge += `<div style="font-size:12px;color:#0b62c4">Open house: ${esc(l.openHouse)}</div>`;
+    const title = l.kind === 'rental' ? (l.name || l.address) : l.address;
+    const sub = l.kind === 'rental' && l.name && l.address && l.name !== l.address ? esc(l.address) + ' &middot; ' : '';
     return `<tr>
   <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb;vertical-align:top">
-    <a href="${esc(l.url)}" style="color:#0b62c4;text-decoration:none;font-weight:600">${esc(l.address)}</a>
-    <div style="color:#666;font-size:12px">${esc(l.city)} ${esc(l.zip)}${l.location ? ' &middot; ' + esc(l.location) : ''}</div>
+    ${l.url ? `<a href="${esc(l.url)}" style="color:#0b62c4;text-decoration:none;font-weight:600">${esc(title)}</a>`
+            : `<span style="font-weight:600">${esc(title)}</span>`}
+    <div style="color:#666;font-size:12px">${sub}${esc(l.city)} ${esc(l.zip)}${l.location ? ' &middot; ' + esc(l.location) : ''}</div>
     <div style="color:#444;font-size:12px;margin-top:3px">${detailLine(l)}</div>
     ${badge}
   </td>
-  <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb;text-align:right;vertical-align:top;white-space:nowrap">${priceCell}</td>
+  <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb;text-align:right;vertical-align:top;white-space:nowrap">${priceCell(l)}</td>
 </tr>`;
   }).join('\n');
 
-  const more = listings.length > cfg.dealScoring.maxRowsPerSection
-    ? `<div style="font-size:12px;color:#666;padding:6px 8px">+ ${listings.length - cfg.dealScoring.maxRowsPerSection} more not shown</div>`
-    : '';
+  const more = listings.length > cap
+    ? `<div style="font-size:12px;color:#666;padding:6px 8px">+ ${listings.length - cap} more not shown</div>` : '';
   return `<table style="width:100%;border-collapse:collapse;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px">${rows}</table>${more}`;
 }
 
-function section(title, listings, cfg, opts) {
+function subSection(title, listings, cfg, opts) {
   if (!listings || !listings.length) return '';
-  return `<h2 style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:16px;
-    margin:26px 0 6px;padding-bottom:5px;border-bottom:2px solid #111">${title}
-    <span style="color:#888;font-weight:400">(${listings.length})</span></h2>` + tableFor(listings, cfg, opts);
+  return `<h3 style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;
+    margin:18px 0 4px;color:#333">${title}
+    <span style="color:#999;font-weight:400">(${listings.length})</span></h3>` + tableFor(listings, cfg, opts);
 }
 
-function renderEmail(changes, deals, cfg, stats) {
+// Each search renders as its own top-level section with its own sub-sections.
+function renderSearchBlock(s, res, cfg) {
+  const c = res.changes, d = res.deals;
+  let body = '';
+  body += subSection('&#9733; Best value &mdash; new &amp; under ZIP median', d.underMedian, cfg, { showDiscount: true });
+  body += subSection('&#128293; Motivated sellers &mdash; stale &amp; reduced', d.motivated, cfg);
+  body += subSection(s.type === 'rental' ? 'New rentals' : 'New listings', c.new, cfg);
+  body += subSection(s.type === 'rental' ? 'Rent drops' : 'Price cuts', c.priceCuts, cfg);
+  body += subSection(s.type === 'rental' ? 'Rent increases' : 'Price increases', c.priceIncreases, cfg);
+  body += subSection('Back on market', c.backOnMarket, cfg);
+  body += subSection('Status changes', c.statusChanges, cfg);
+  body += subSection('Left the market', c.gone, cfg);
+
+  const n = res.changeCount;
+  const header = `<h2 style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:17px;
+    margin:30px 0 2px;padding:8px 10px;background:#f3f4f6;border-left:4px solid #111;border-radius:3px">
+    ${esc(s.name)}
+    <span style="color:#777;font-weight:400;font-size:13px"> &middot; ${res.tracked} tracked &middot; ${n} update${n === 1 ? '' : 's'}</span></h2>`;
+
+  if (!body) {
+    return header + `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;
+      font-size:13px;color:#888;padding:8px 10px">No changes today.</div>`;
+  }
+  return header + body;
+}
+
+function renderEmail(results, cfg, stats) {
   const date = new Date().toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   });
-
   let body = `<div style="max-width:720px;margin:0 auto;padding:16px">
 <h1 style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:20px;margin:0">
   ${esc(cfg.email.subjectPrefix)}</h1>
 <div style="color:#666;font-size:13px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;margin-top:2px">
-  ${date} &middot; ${stats.zipCount} ZIPs &middot; ${stats.totalTracked} active listings in your buy box</div>`;
+  ${date} &middot; ${stats.zipCount} ZIPs &middot; ${results.length} searches</div>`;
 
-  body += section('&#9733; Best value &mdash; new &amp; under ZIP median', deals.underMedian, cfg, { showDiscount: true });
-  body += section('&#128293; Motivated sellers &mdash; stale &amp; reduced', deals.motivated, cfg);
-  body += section('New listings', changes.new, cfg);
-  body += section('Price cuts', changes.priceCuts, cfg);
-  body += section('Price increases', changes.priceIncreases, cfg);
-  body += section('Back on market', changes.backOnMarket, cfg);
-  body += section('Status changes', changes.statusChanges, cfg);
-  body += section('Left the market', changes.gone, cfg);
+  // Contents strip so each section is findable at a glance.
+  body += `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:12px;
+    color:#555;margin-top:10px;padding:8px 10px;background:#fafafa;border:1px solid #eee;border-radius:3px">` +
+    results.map(r => `${esc(r.search.name)}: <strong>${r.changeCount}</strong>`).join(' &nbsp;|&nbsp; ') + `</div>`;
 
-  // Per-ZIP median $/sqft context table
-  if (deals.medians && deals.medians.size) {
-    const rows = [...deals.medians.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  for (const r of results) body += renderSearchBlock(r.search, r, cfg);
+
+  // ZIP median context from the first sale search that produced medians.
+  const withMed = results.find(r => r.deals.medians && r.deals.medians.size);
+  if (withMed) {
+    const rows = [...withMed.deals.medians.entries()].sort((a, b) => a[0].localeCompare(b[0]))
       .map(([zip, med]) => `<tr><td style="padding:4px 10px 4px 0">${zip}</td>
         <td style="padding:4px 0;text-align:right">$${med}/sqft</td></tr>`).join('');
     body += `<h2 style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:16px;
@@ -475,11 +585,19 @@ function renderEmail(changes, deals, cfg, stats) {
 
   body += `<div style="margin-top:28px;padding-top:10px;border-top:1px solid #ddd;color:#888;font-size:11px;
     font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
-    Listing data via Redfin. Tune your filters in <code>~/zillow-agent/config.json</code>.</div></div>`;
+    Listing and rental data via Redfin. Tune each search in <code>~/zillow-agent/config.json</code>.</div></div>`;
   return body;
 }
 
 /* ------------------------------------------------------------------ main */
+
+// Older configs had a single top-level buyBox; treat that as one sale search.
+function loadSearches(cfg) {
+  if (Array.isArray(cfg.searches) && cfg.searches.length) {
+    return cfg.searches.filter(s => s.enabled !== false);
+  }
+  return [{ id: 'primary', name: 'Primary buy box', type: 'sale', filters: cfg.buyBox }];
+}
 
 async function main() {
   const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
@@ -491,41 +609,60 @@ async function main() {
     return;
   }
 
-  let state = { listings: {}, lastRun: null };
+  let state = {};
   try { state = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); } catch {}
   const firstRun = !state.lastRun;
+  // Migrate a pre-searches flat state into the primary search's bucket.
+  if (state.listings && !state.searches) state = { lastRun: state.lastRun, searches: { primary: state.listings } };
+  state.searches = state.searches || {};
 
+  const searches = loadSearches(cfg);
+  const needSale = searches.some(s => s.type !== 'rental');
+  const needRental = searches.some(s => s.type === 'rental');
   const allZips = cfg.markets.flatMap(m => m.zips);
-  log(`fetching ${allZips.length} ZIPs...`);
+  log(`fetching ${allZips.length} ZIPs · ${searches.length} searches` +
+      ` (${needSale ? 'sale' : ''}${needSale && needRental ? '+' : ''}${needRental ? 'rental' : ''})`);
 
-  const current = [];
-  let rawCount = 0, totalTiles = 0;
+  // Fetch each ZIP once and share the pool across every search of that kind.
+  const salePool = [], rentPool = [];
+  let totalTiles = 0;
   for (const zip of allZips) {
-    const { listings, tiles } = await fetchZip(zip, cfg);
-    rawCount += listings.length;
-    totalTiles += tiles;
-    const kept = listings.filter(l => passesBuyBox(l, cfg.buyBox));
-    log(`  ${zip}: ${listings.length} active -> ${kept.length} in buy box (${tiles} tile${tiles === 1 ? "" : "s"})`);
-    current.push(...kept);
+    let sN = 0, rN = 0;
+    if (needSale) {
+      const { listings, tiles } = await fetchZip(zip, cfg);
+      totalTiles += tiles; sN = listings.length;
+      salePool.push(...listings);
+    }
+    if (needRental) {
+      if (needSale) await sleep(cfg.fetch.delayMsBetweenTiles || 700);
+      const r = await fetchRentalsZip(zip, cfg);
+      rN = r.length; rentPool.push(...r);
+    }
+    log(`  ${zip}: ${sN} for-sale, ${rN} rental`);
     if (zip !== allZips[allZips.length - 1]) await sleep(cfg.fetch.delayMsBetweenZips);
   }
 
-  // Dedupe (bbox overlap between neighboring ZIPs can surface the same home twice)
-  const seen = new Set();
-  const unique = current.filter(l => (seen.has(l.id) ? false : (seen.add(l.id), true)));
-  log(`total: ${rawCount} active, ${unique.length} unique in buy box (${totalTiles} tiles fetched)`);
+  const dedupe = arr => { const s = new Set(); return arr.filter(l => s.has(l.id) ? false : (s.add(l.id), true)); };
+  const sale = dedupe(salePool), rent = dedupe(rentPool);
+  log(`pool: ${sale.length} unique for-sale, ${rent.length} unique rental (${totalTiles} tiles)`);
 
-  const changes = diff(unique, state, cfg);
-  const deals = scoreDeals(unique, changes, cfg);
+  const results = [];
+  for (const s of searches) {
+    const pool = s.type === 'rental' ? rent : sale;
+    const matched = pool.filter(l => passesFilters(l, s.filters));
+    const prev = state.searches[s.id] || {};
+    const changes = diff(matched, prev, cfg);
+    const deals = scoreDeals(matched, changes, cfg, s.type !== 'rental' && s.dealScoring !== false);
+    const changeCount = changes.new.length + changes.priceCuts.length + changes.priceIncreases.length +
+                        changes.backOnMarket.length + changes.statusChanges.length + changes.gone.length;
+    results.push({ search: s, matched, changes, deals, changeCount, tracked: matched.length });
+    log(`  [${s.name}] ${matched.length} tracked · ${changes.new.length} new, ` +
+        `${changes.priceCuts.length} cuts, ${changes.priceIncreases.length} up, ${deals.underMedian.length} value`);
+  }
 
-  const changeCount = changes.new.length + changes.priceCuts.length + changes.priceIncreases.length +
-                      changes.backOnMarket.length + changes.statusChanges.length + changes.gone.length;
-  log(`changes: ${changes.new.length} new, ${changes.priceCuts.length} cuts, ` +
-      `${changes.priceIncreases.length} increases, ${changes.backOnMarket.length} back on market, ` +
-      `${changes.statusChanges.length} status, ${deals.underMedian.length} value picks`);
-
-  const stats = { zipCount: allZips.length, totalTracked: unique.length };
-  const html = renderEmail(changes, deals, cfg, stats);
+  const totalChanges = results.reduce((a, r) => a + r.changeCount, 0);
+  const stats = { zipCount: allZips.length };
+  const html = renderEmail(results, cfg, stats);
 
   if (DRY_RUN) {
     const outPath = path.join(DIR, 'preview.html');
@@ -535,18 +672,15 @@ async function main() {
   }
 
   if (!NO_EMAIL) {
-    if (changeCount === 0 && !cfg.email.sendWhenNothingNew) {
+    if (totalChanges === 0 && !cfg.email.sendWhenNothingNew) {
       log('nothing new — skipping email');
     } else {
-      const tag = firstRun ? 'baseline' :
-        [changes.new.length && `${changes.new.length} new`,
-         changes.priceCuts.length && `${changes.priceCuts.length} cuts`,
-         deals.underMedian.length && `${deals.underMedian.length} value`]
-          .filter(Boolean).join(', ') || 'update';
+      const tag = firstRun ? 'baseline'
+        : results.filter(r => r.changeCount).map(r => `${r.search.shortName || r.search.name} ${r.changeCount}`).join(', ')
+          || 'update';
       const subject = `${cfg.email.subjectPrefix} — ${tag}`;
       try {
-        execFileSync(process.execPath, [path.join(DIR, 'send-email.js'), subject, html, '--html'],
-          { stdio: 'inherit' });
+        execFileSync(process.execPath, [path.join(DIR, 'send-email.js'), subject, html, '--html'], { stdio: 'inherit' });
         log(`email sent: ${subject}`);
       } catch (e) {
         log(`EMAIL FAILED: ${e.message}`);
@@ -555,14 +689,19 @@ async function main() {
     }
   }
 
-  const newState = { lastRun: new Date().toISOString(), listings: {} };
-  for (const l of unique) {
-    newState.listings[l.id] = { price: l.price, status: l.status, dom: l.dom, address: l.address, zip: l.zip, url: l.url };
+  const newState = { lastRun: new Date().toISOString(), searches: {} };
+  for (const r of results) {
+    const bucket = {};
+    for (const l of r.matched) {
+      bucket[l.id] = { price: l.price, status: l.status, dom: l.dom ?? null,
+                       address: l.address || l.name, zip: l.zip, url: l.url };
+    }
+    newState.searches[r.search.id] = bucket;
   }
   const saved = backupState();
   fs.writeFileSync(STATE_PATH, JSON.stringify(newState));
-  log(`state saved (${unique.length} listings)` +
-      `${saved ? ` · previous state kept in ${path.basename(BACKUP_PATH)}` : ''}`);
+  log(`state saved (${results.map(r => `${r.search.id}:${r.matched.length}`).join(', ')})` +
+      `${saved ? ` · previous kept in ${path.basename(BACKUP_PATH)}` : ''}`);
 }
 
 main().catch(e => { log(`FATAL: ${e.stack || e.message}`); process.exit(1); });
