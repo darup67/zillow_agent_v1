@@ -22,11 +22,15 @@ if (!subject) { process.stderr.write('Usage: send-email.js "subject" "body" [--h
 // Recipient override, else self-send.
 const TO = process.env.ZILLOW_AGENT_TO || GMAIL_USER;
 
-const HARD_TIMEOUT_MS = 45000;
+// 3 attempts x 20s socket + backoff used to overrun a 45s limit, so the last
+// retry died as a bare "hard timeout". The budget now fits the attempts.
+const HARD_TIMEOUT_MS = 75000;
+const STARTED = Date.now();
 setTimeout(() => { process.stderr.write('hard timeout\n'); process.exit(1); }, HARD_TIMEOUT_MS).unref();
 
 const MAX_RETRIES = 3;
 const BACKOFF_BASE_MS = 2000;
+const SOCKET_TIMEOUT_MS = 20000;
 
 function dotStuff(text) {
   return text.replace(/\r?\n/g, '\r\n').replace(/^\.(?=.)/gm, '..');
@@ -80,7 +84,7 @@ function attempt() {
     } catch (e) { return reject(e); }
 
     sock.setEncoding('utf8');
-    sock.setTimeout(20000, () => finish(new Error('socket timeout')));
+    sock.setTimeout(SOCKET_TIMEOUT_MS, () => finish(new Error('socket timeout')));
 
     sock.on('data', chunk => {
       buf += chunk;
@@ -118,6 +122,7 @@ async function sendWithRetry() {
       }
       if (i < MAX_RETRIES - 1) {
         const delay = BACKOFF_BASE_MS * Math.pow(2, i);
+        if (Date.now() - STARTED + delay + SOCKET_TIMEOUT_MS > HARD_TIMEOUT_MS) break;
         process.stderr.write(`attempt ${i + 1} failed (${e.message}), retrying in ${delay}ms\n`);
         await new Promise(r => setTimeout(r, delay));
       }

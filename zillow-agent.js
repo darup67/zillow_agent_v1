@@ -679,12 +679,24 @@ async function main() {
         : results.filter(r => r.changeCount).map(r => `${r.search.shortName || r.search.name} ${r.changeCount}`).join(', ')
           || 'update';
       const subject = `${cfg.email.subjectPrefix} — ${tag}`;
-      try {
-        execFileSync(process.execPath, [path.join(DIR, 'send-email.js'), subject, html, '--html'], { stdio: 'inherit' });
-        log(`email sent: ${subject}`);
-      } catch (e) {
-        log(`EMAIL FAILED: ${e.message}`);
+      // A network blip must not cost the day's digest: retry with pauses, and
+      // if every try fails keep the old state so tomorrow re-reports today's
+      // changes instead of treating them as already seen.
+      let sent = false;
+      for (let n = 1; n <= 3 && !sent; n++) {
+        try {
+          execFileSync(process.execPath, [path.join(DIR, 'send-email.js'), subject, html, '--html'], { stdio: 'inherit' });
+          log(`email sent: ${subject}`);
+          sent = true;
+        } catch (e) {
+          log(`EMAIL FAILED (try ${n}/3): ${e.message}`);
+          if (n < 3) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60000 * n);
+        }
+      }
+      if (!sent) {
+        log('state NOT saved — changes will be reported again next run');
         process.exitCode = 1;
+        return;
       }
     }
   }
