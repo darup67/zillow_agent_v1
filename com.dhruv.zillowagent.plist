@@ -9,7 +9,7 @@
     <array>
         <string>/bin/sh</string>
         <string>-c</string>
-        <string>export FLIP_GMAIL_APP_PASSWORD=$(security find-generic-password -a darup67@gmail.com -s flip-notifier-gmail -w 2>/dev/null); exec /Users/dhruvpatel/.local/bin/node /Users/dhruvpatel/zillow-agent/zillow-agent.js</string>
+        <string>export FLIP_GMAIL_APP_PASSWORD=$(security find-generic-password -a darup67@gmail.com -s flip-notifier-gmail -w 2>/dev/null); exec /usr/bin/caffeinate -i /Users/dhruvpatel/.local/bin/node /Users/dhruvpatel/zillow-agent/zillow-agent.js</string>
     </array>
 
     <key>WorkingDirectory</key>
