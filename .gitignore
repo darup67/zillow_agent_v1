@@ -16,3 +16,7 @@ config.json.bak
 
 # Manual state snapshots (700KB of listing data — never commit)
 *.bak
+
+# Jev tag cache and review log (listing remarks)
+jev-cache.json
+jev-tags.jsonl
