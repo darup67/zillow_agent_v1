@@ -194,9 +194,9 @@
     }
   ],
   "jev": {
-    "_comment": "Jev (TypeSafe) tags from listing remarks, via ~/jev-client. Shadow mode since 2026-09-24: tags show in --dry-run preview.html and are logged to jev-tags.jsonl; set showInEmail true once they check out.",
+    "_comment": "Jev (TypeSafe) tags from listing remarks, via ~/jev-client. Added 2026-09-24; shown in the email since 2026-09-24 at the user's request. Tags are also logged to jev-tags.jsonl. Nothing filters or reorders on them.",
     "enabled": true,
-    "showInEmail": false,
+    "showInEmail": true,
     "maxPerRun": 40,
     "delayMs": 1000
   }
