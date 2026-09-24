@@ -191,3 +191,18 @@ Reuses flip-notifier's Gmail app password from Keychain — nothing on disk:
 ```bash
 security find-generic-password -a darup67@gmail.com -s flip-notifier-gmail -w
 ```
+
+## Jev tags (shadow mode, since 2026-09-24)
+
+`jev-tags.js` asks Jev (via `~/jev-client`) about each listing's **remarks**:
+condition (renovated / maintained / needs work / major rehab), investor pitch,
+disclosed problem, distressed sale, tenant in place. The remarks aren't in the
+gis-csv feed, so each listing costs one page fetch. The cap is `jev.maxPerRun`
+(40), spent in email order (best value, motivated, new, cuts, back on market),
+and each listing is tagged once (`jev-cache.json`, 60 days).
+
+- Tags show in `--dry-run`'s `preview.html` and **not in the email** until
+  `jev.showInEmail` is set to `true`.
+- Every answer, with the remarks it was based on, goes to `jev-tags.jsonl` for review.
+- Nothing filters or reorders on tags. `jev.enabled: false` turns it all off.
+- Without an API key (Keychain `typesafe-jev`) it logs one line and skips.

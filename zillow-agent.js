@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { execFileSync } = require('child_process');
+const { tagListings } = require('./jev-tags');
 
 const DIR = __dirname;
 const CONFIG_PATH = path.join(DIR, 'config.json');
@@ -30,6 +31,7 @@ const ZIPS_PATH = path.join(DIR, 'zips.tsv');
 const LOG_PATH = path.join(DIR, 'zillow-agent.log');
 
 const ARGS = new Set(process.argv.slice(2));
+let SHOW_JEV = false;   // Jev tags: always in --dry-run preview, in email only when config.jev.showInEmail
 const DRY_RUN = ARGS.has('--dry-run');
 const NO_EMAIL = ARGS.has('--no-email') || DRY_RUN;
 
@@ -502,6 +504,9 @@ function tableFor(listings, cfg, opts = {}) {
                `ZIP median ($${l.zipMedianPpsf}/sqft)</div>`;
     }
     if (l.prevStatus) badge += `<div style="font-size:12px;color:#555">${esc(l.prevStatus)} &rarr; ${esc(l.status)}</div>`;
+    if (SHOW_JEV && l.jevTags && l.jevTags.length) {
+      badge += `<div style="font-size:12px;color:#6b4fbb">Jev: ${l.jevTags.map(esc).join(' &middot; ')}</div>`;
+    }
     if (l.openHouse) badge += `<div style="font-size:12px;color:#0b62c4">Open house: ${esc(l.openHouse)}</div>`;
     const title = l.kind === 'rental' ? (l.name || l.address) : l.address;
     const sub = l.kind === 'rental' && l.name && l.address && l.name !== l.address ? esc(l.address) + ' &middot; ' : '';
@@ -658,6 +663,19 @@ async function main() {
     results.push({ search: s, matched, changes, deals, changeCount, tracked: matched.length });
     log(`  [${s.name}] ${matched.length} tracked · ${changes.new.length} new, ` +
         `${changes.priceCuts.length} cuts, ${changes.priceIncreases.length} up, ${deals.underMedian.length} value`);
+  }
+
+  // Tag the listings the email leads with, in its own order, so the per-run cap
+  // spends on what gets read first. Tags are shadow-only (see jev-tags.js).
+  if (cfg.jev && cfg.jev.enabled && !firstRun) {
+    const order = [];
+    for (const r of results) {
+      if (r.search.type === 'rental') continue;
+      order.push(...r.deals.underMedian, ...r.deals.motivated, ...r.changes.new,
+                 ...r.changes.priceCuts, ...r.changes.backOnMarket);
+    }
+    try { await tagListings(order, cfg, log); } catch (e) { log(`jev: tagging error ${e.message}`); }
+    SHOW_JEV = DRY_RUN || !!cfg.jev.showInEmail;
   }
 
   const totalChanges = results.reduce((a, r) => a + r.changeCount, 0);

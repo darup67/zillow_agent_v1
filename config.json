@@ -192,5 +192,12 @@
         "requireAvailableUnits": true
       }
     }
-  ]
+  ],
+  "jev": {
+    "_comment": "Jev (TypeSafe) tags from listing remarks, via ~/jev-client. Shadow mode since 2026-09-24: tags show in --dry-run preview.html and are logged to jev-tags.jsonl; set showInEmail true once they check out.",
+    "enabled": true,
+    "showInEmail": false,
+    "maxPerRun": 40,
+    "delayMs": 1000
+  }
 }
