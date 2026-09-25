@@ -206,3 +206,12 @@ and each listing is tagged once (`jev-cache.json`, 60 days).
 - Every answer, with the remarks it was based on, goes to `jev-tags.jsonl` for review.
 - Nothing filters or reorders on tags. `jev.enabled: false` turns it all off.
 - Without an API key (Keychain `typesafe-jev`) it logs one line and skips.
+
+## Partial-fetch guard (2026-09-24)
+
+Redfin tile errors are swallowed per tile, so a block or outage used to produce empty
+ZIPs. Saving that would wipe the diff baseline, and the next day every listing would
+read as "new". Now a run that tracks less than `fetch.minTrackedFraction` (default 0.6)
+of the previous run's listings saves nothing, sends nothing and exits with code 3.
+`~/market-lab/ops/watchdog.py` re-runs it (max 2) and alerts at 09:00 if it keeps
+failing. `--force` overrides after a real market drop.

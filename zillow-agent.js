@@ -10,6 +10,7 @@
  *   node zillow-agent.js --dry-run    # fetch + print digest, no email, no state write
  *   node zillow-agent.js --no-email   # fetch + diff + save state, skip email
  *   node zillow-agent.js --reset      # wipe state (next run treats everything as new)
+ *   node zillow-agent.js --force      # save even if far fewer listings than last run
  *
  * Data sources:
  *   - Listings: Redfin gis-csv polygon search (bbox per ZIP, filtered to exact ZIP)
@@ -676,6 +677,21 @@ async function main() {
     }
     try { await tagListings(order, cfg, log); } catch (e) { log(`jev: tagging error ${e.message}`); }
     SHOW_JEV = DRY_RUN || !!cfg.jev.showInEmail;
+  }
+
+  // Partial-fetch guard. fetchZip swallows tile errors, so a Redfin block or outage
+  // returns empty ZIPs instead of failing. Saving that would wipe the diff baseline
+  // and tomorrow every listing would read as "new". If this run tracks far fewer
+  // listings than the last one, keep the old state and exit non-zero: the watchdog
+  // (~/market-lab/ops/watchdog.py) re-runs it and alerts if it keeps failing.
+  const prevTracked = Object.values(state.searches || {}).reduce((a, b) => a + Object.keys(b || {}).length, 0);
+  const nowTracked = results.reduce((a, r) => a + r.matched.length, 0);
+  const minFrac = (cfg.fetch && cfg.fetch.minTrackedFraction) || 0.6;
+  if (!firstRun && prevTracked > 100 && nowTracked < minFrac * prevTracked && !ARGS.has('--force')) {
+    log(`ABORT: tracked ${nowTracked} listings vs ${prevTracked} last run (< ${Math.round(minFrac * 100)}%). ` +
+        `Likely a partial Redfin fetch; state NOT saved, no email. --force overrides.`);
+    process.exitCode = 3;
+    return;
   }
 
   const totalChanges = results.reduce((a, r) => a + r.changeCount, 0);
