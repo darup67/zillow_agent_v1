@@ -561,7 +561,7 @@ function renderSearchBlock(s, res, cfg) {
   return header + body;
 }
 
-function renderEmail(results, cfg, stats) {
+function renderEmail(results, cfg, stats, strResults = []) {
   const date = new Date().toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   });
@@ -578,6 +578,13 @@ function renderEmail(results, cfg, stats) {
 
   for (const r of results) body += renderSearchBlock(r.search, r, cfg);
 
+  // Standing cash-flow screen — its own block, deliberately after and visually
+  // separate from the change-feed sections above.
+  if (strResults.length) {
+    body += `<div style="margin:34px 0 0;border-top:3px double #1a7f37"></div>`;
+    for (const r of strResults) body += renderStrBlock(r.search, r);
+  }
+
   // ZIP median context from the first sale search that produced medians.
   const withMed = results.find(r => r.deals.medians && r.deals.medians.size);
   if (withMed) {
@@ -593,6 +600,179 @@ function renderEmail(results, cfg, stats) {
     font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
     Listing and rental data via Redfin. Tune each search in <code>~/zillow-agent/config.json</code>.</div></div>`;
   return body;
+}
+
+/* ------------------------------------------------------ STR cash-flow screen */
+
+// Long-term rent comps by ZIP + bedroom count, built from the rental pool this
+// run already fetched. A complex advertising a 1-2 bed range contributes its low
+// rent to the low bed count and its high rent to the high one.
+function buildRentComps(rentals) {
+  const buckets = new Map();
+  const add = (zip, beds, rent) => {
+    if (!zip || beds == null || !rent) return;
+    const k = `${zip}|${Math.round(beds)}`;
+    if (!buckets.has(k)) buckets.set(k, []);
+    buckets.get(k).push(rent);
+  };
+  for (const r of rentals) {
+    if (!r.zip) continue;
+    const bLo = r.bedMin, bHi = r.bedMax ?? r.bedMin;
+    const rLo = r.rentMin, rHi = r.rentMax ?? r.rentMin;
+    if (bLo == null || rLo == null) continue;
+    if (bHi === bLo) add(r.zip, bLo, (rLo + (rHi ?? rLo)) / 2);
+    else { add(r.zip, bLo, rLo); add(r.zip, bHi, rHi); }
+  }
+  const comps = new Map();
+  for (const [k, arr] of buckets) comps.set(k, { median: median(arr), n: arr.length });
+  return comps;
+}
+
+// Nearest usable comp: exact ZIP+beds, else one bedroom either way, scaled.
+// Returns null rather than guessing when the ZIP has too few rentals to trust.
+function rentFor(comps, zip, beds, minN) {
+  if (beds == null) return null;
+  const b = Math.round(beds);
+  for (const cand of [b, b - 1, b + 1]) {
+    const c = comps.get(`${zip}|${cand}`);
+    if (c && c.n >= minN && c.median) {
+      const scale = cand === b ? 1 : b / cand;
+      return { rent: Math.round(c.median * scale), n: c.n, beds: cand, exact: cand === b };
+    }
+  }
+  return null;
+}
+
+// Ranks candidates on rent-to-price (the "1% rule") plus entry discount vs the
+// ZIP's median $/sqft. Anything without a trustworthy rent comp is dropped, not
+// guessed at.
+function screenStr(matched, comps, s) {
+  const cf = s.cashflow || {};
+  const minN = cf.minRentComps ?? 4;
+
+  const byZip = new Map();
+  for (const l of matched) {
+    if (l.ppsf == null) continue;
+    if (!byZip.has(l.zip)) byZip.set(l.zip, []);
+    byZip.get(l.zip).push(l.ppsf);
+  }
+  const medians = new Map();
+  for (const [z, a] of byZip) medians.set(z, median(a));
+
+  const rows = [];
+  let noComp = 0;
+  for (const l of matched) {
+    if (!l.price) continue;
+    const rc = rentFor(comps, l.zip, l.beds, minN);
+    if (!rc) { noComp++; continue; }
+    const ltrRatio = (rc.rent / l.price) * 100;
+    if (cf.minRentToPricePct != null && ltrRatio < cf.minRentToPricePct) continue;
+    const hoa = l.hoa || 0;
+    const zipMed = medians.get(l.zip);
+    const disc = (zipMed && l.ppsf) ? ((zipMed - l.ppsf) / zipMed) * 100 : 0;
+    // STR gross is an ASSUMPTION — long-term rent x uplift x occupancy. There is
+    // no nightly-rate or occupancy feed here; see the note the email carries.
+    const strGross = Math.round(rc.rent * (cf.strUpliftFactor ?? 1.6) * (cf.strOccupancy ?? 0.65));
+    const condRatio = (zipMed && l.ppsf) ? l.ppsf / zipMed : null;
+    const floor = cf.conditionFloor ?? 0.60;
+    const tier = (condRatio != null && condRatio < floor) ? 'rehab' : 'ready';
+    // Cap the ratio term: beyond ~2%/mo the number reflects a bad comp or a
+    // distressed asset, not a better deal, so it must not dominate the sort.
+    const ratioTerm = Math.min(ltrRatio, cf.ratioScoreCap ?? 2.0) * 10;
+    const score = ratioTerm + disc * (cf.entryDiscountWeight ?? 0.6) - hoa / 25;
+    const flags = [];
+    if (condRatio != null && condRatio < 0.75) flags.push(`priced ${Math.round((1 - condRatio) * 100)}% below ZIP $/sqft — verify condition`);
+    if (l.yearBuilt != null && l.yearBuilt < 1970) flags.push(`built ${l.yearBuilt}`);
+    if (l.dom != null && l.dom >= 90) flags.push(`${l.dom}d on market`);
+    rows.push({ ...l, estRent: rc.rent, rentComps: rc.n, rentExact: rc.exact, rentBeds: rc.beds,
+                ltrRatio, strGross, strRatio: (strGross / l.price) * 100,
+                zipMedianPpsf: zipMed, discountPct: disc, condRatio, tier, flags, score });
+  }
+  rows.sort((a, b) => b.score - a.score);
+  const ready = rows.filter(r => r.tier === 'ready');
+  const rehab = rows.filter(r => r.tier === 'rehab');
+  const cap = cf.maxRows ?? 15;
+  return { rows: ready.slice(0, cap), rehabRows: rehab.slice(0, cf.maxRehabRows ?? 6),
+           total: ready.length, rehabTotal: rehab.length,
+           screened: matched.length, noComp, medians };
+}
+
+function strRow(l, i) {
+  const rentNote = l.rentExact ? `${l.rentComps} comps` : `${l.rentComps} comps @ ${l.rentBeds}bd, scaled`;
+  const discTxt = l.discountPct >= 1
+    ? `<span style="color:#1a7f37">${l.discountPct.toFixed(0)}% under ZIP ${l.zipMedianPpsf}/sqft</span>`
+    : (l.zipMedianPpsf ? `<span style="color:#888">at ZIP ${l.zipMedianPpsf}/sqft</span>` : '');
+  const flagTxt = (l.flags && l.flags.length)
+    ? `<div style="font-size:11px;color:#b35900;margin-top:3px">&#9888; ${l.flags.map(esc).join(" &middot; ")}</div>`
+    : '';
+  return `<tr>
+  <td style="padding:10px 6px;border-bottom:1px solid #e5e7eb;vertical-align:top;color:#999;font-size:12px">${i + 1}</td>
+  <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb;vertical-align:top">
+    <a href="${esc(l.url)}" style="color:#0b62c4;text-decoration:none;font-weight:600">${esc(l.address || "Undisclosed address")}</a>
+    <div style="color:#666;font-size:12px">${esc(l.city || "")} ${esc(l.zip)} &middot; ${esc(l.propertyType || "")}</div>
+    <div style="color:#444;font-size:12px;margin-top:3px">${detailLine(l)}</div>
+    <div style="font-size:12px;margin-top:3px">${discTxt}</div>
+    ${flagTxt}
+  </td>
+  <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb;text-align:right;vertical-align:top;white-space:nowrap">
+    <strong>${fmtMoney(l.price)}</strong>
+    <div style="font-size:12px;color:#444;margin-top:3px">LTR ~${fmtMoney(l.estRent)}/mo</div>
+    <div style="font-size:11px;color:#888">${rentNote}</div>
+    <div style="font-size:13px;color:#1a7f37;font-weight:600;margin-top:4px">${l.ltrRatio.toFixed(2)}% rent/price</div>
+    <div style="font-size:11px;color:#777">STR est ${fmtMoney(l.strGross)}/mo</div>
+  </td>
+</tr>`;
+}
+
+function renderStrBlock(s, res) {
+  const cf = s.cashflow || {};
+  const head = `<h2 style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:17px;
+    margin:38px 0 2px;padding:9px 10px;background:#0f2e1d;color:#eafff2;
+    border-left:4px solid #1a7f37;border-radius:3px">
+    ${esc(s.name)}
+    <span style="color:#9fd4b4;font-weight:400;font-size:13px"> &middot; ${res.total} qualify &middot; showing ${res.rows.length}</span></h2>`;
+
+  if (!res.rows.length && !(res.rehabRows && res.rehabRows.length)) {
+    return head + `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;
+      font-size:13px;color:#888;padding:8px 10px">No candidates cleared the cash-flow screen today.</div>`;
+  }
+
+  const rows = res.rows.map(strRow).join('\n');
+
+
+  const assumptions = `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:11px;
+    color:#7a5c00;background:#fff8e1;border:1px solid #ffe08a;border-radius:3px;padding:8px 10px;margin-top:10px">
+    <strong>How to read this.</strong> "LTR" is the median asking rent for that ZIP and bedroom count from
+    today's live rental listings — it is a <em>long-term</em> rent, the only rent data this feed carries.
+    "rent/price" is monthly rent over purchase price (1.00% = the 1% rule).
+    <strong>"STR est" is an assumption, not data</strong>: long-term rent &times; ${(cf.strUpliftFactor ?? 1.6)} uplift
+    &times; ${Math.round((cf.strOccupancy ?? 0.65) * 100)}% occupancy. There is no nightly-rate or occupancy
+    feed here — verify against AirDNA or comparable listings before underwriting.
+    Figures are gross: taxes, insurance, management, furnishing and vacancy are not deducted.
+    <strong>Check STR legality per address</strong> — City of Atlanta requires a short-term rental licence and
+    limits permits to a primary residence plus one additional unit, which constrains an LLC holding several;
+    county and HOA rules differ.</div>`;
+
+  const tbl = (r) => `<table style="width:100%;border-collapse:collapse;
+    font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px">${r}</table>`;
+
+  // Rehab tier: deep-discount stock where the rent comp assumes a condition the
+  // property does not have. Shown, but never mixed into the rent-ready ranking.
+  let rehab = '';
+  if (res.rehabRows && res.rehabRows.length) {
+    rehab = `<h3 style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;
+      margin:22px 0 4px;color:#b35900">&#128736; Value-add / rehab required
+      <span style="color:#999;font-weight:400"> &middot; ${res.rehabTotal} found, showing ${res.rehabRows.length}</span></h3>
+      <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:11px;color:#777;margin-bottom:6px">
+      Priced under ${Math.round((s.cashflow?.conditionFloor ?? 0.6) * 100)}% of their ZIP median $/sqft. The rent figures below
+      assume a renovated, rentable property &mdash; treat them as <em>post-rehab</em>, not as-is.</div>`
+      + tbl(res.rehabRows.map(strRow).join('\n'));
+  }
+
+  const readyHead = `<h3 style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;
+    margin:14px 0 4px;color:#1a7f37">&#10003; Rent-ready candidates</h3>`;
+
+  return head + readyHead + tbl(rows) + rehab + assumptions;
 }
 
 /* ------------------------------------------------------------------ main */
@@ -622,11 +802,15 @@ async function main() {
   if (state.listings && !state.searches) state = { lastRun: state.lastRun, searches: { primary: state.listings } };
   state.searches = state.searches || {};
 
-  const searches = loadSearches(cfg);
-  const needSale = searches.some(s => s.type !== 'rental');
-  const needRental = searches.some(s => s.type === 'rental');
+  const allSearches = loadSearches(cfg);
+  // Rank-mode searches (the STR screen) are a standing ranked list, not a change
+  // feed: they never diff, never touch state, and render in their own block.
+  const searches = allSearches.filter(x => x.mode !== 'rank');
+  const rankSearches = allSearches.filter(x => x.mode === 'rank');
+  const needSale = allSearches.some(s => s.type !== 'rental');
+  const needRental = allSearches.some(s => s.type === 'rental');
   const allZips = cfg.markets.flatMap(m => m.zips);
-  log(`fetching ${allZips.length} ZIPs · ${searches.length} searches` +
+  log(`fetching ${allZips.length} ZIPs · ${allSearches.length} searches` +
       ` (${needSale ? 'sale' : ''}${needSale && needRental ? '+' : ''}${needRental ? 'rental' : ''})`);
 
   // Fetch each ZIP once and share the pool across every search of that kind.
@@ -666,6 +850,17 @@ async function main() {
         `${changes.priceCuts.length} cuts, ${changes.priceIncreases.length} up, ${deals.underMedian.length} value`);
   }
 
+  // Standing cash-flow screen — ranked, no diff, no state.
+  const rentComps = buildRentComps(rent);
+  const strResults = [];
+  for (const s of rankSearches) {
+    const matched = sale.filter(l => passesFilters(l, s.filters));
+    const res = screenStr(matched, rentComps, s);
+    strResults.push({ search: s, ...res });
+    log(`  [${s.name}] ${matched.length} in price band · ${res.total} rent-ready, ${res.rehabTotal} rehab` +
+        (res.noComp ? ` · ${res.noComp} skipped (no rent comp)` : ''));
+  }
+
   // Tag the listings the email leads with, in its own order, so the per-run cap
   // spends on what gets read first. Tags are shadow-only (see jev-tags.js).
   if (cfg.jev && cfg.jev.enabled && !firstRun) {
@@ -696,7 +891,7 @@ async function main() {
 
   const totalChanges = results.reduce((a, r) => a + r.changeCount, 0);
   const stats = { zipCount: allZips.length };
-  const html = renderEmail(results, cfg, stats);
+  const html = renderEmail(results, cfg, stats, strResults);
 
   if (DRY_RUN) {
     const outPath = path.join(DIR, 'preview.html');
@@ -706,13 +901,16 @@ async function main() {
   }
 
   if (!NO_EMAIL) {
-    if (totalChanges === 0 && !cfg.email.sendWhenNothingNew) {
+    const strRows = strResults.reduce((a, r) => a + r.rows.length, 0);
+    if (totalChanges === 0 && strRows === 0 && !cfg.email.sendWhenNothingNew) {
       log('nothing new — skipping email');
     } else {
       const tag = firstRun ? 'baseline'
         : results.filter(r => r.changeCount).map(r => `${r.search.shortName || r.search.name} ${r.changeCount}`).join(', ')
           || 'update';
-      const subject = `${cfg.email.subjectPrefix} — ${tag}`;
+      const strTag = strResults.filter(r => r.rows.length)
+        .map(r => `${r.search.shortName || 'STR'} ${r.total}`).join(', ');
+      const subject = `${cfg.email.subjectPrefix} — ${tag}${strTag ? ` | ${strTag}` : ''}`;
       // A network blip must not cost the day's digest: retry with pauses, and
       // if every try fails keep the old state so tomorrow re-reports today's
       // changes instead of treating them as already seen.

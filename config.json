@@ -191,6 +191,51 @@
         "minSqft": 450,
         "requireAvailableUnits": true
       }
+    },
+    {
+      "id": "str-cashflow",
+      "name": "STR / rental investment — under $300k",
+      "shortName": "STR",
+      "type": "sale",
+      "mode": "rank",
+      "separateSection": true,
+      "enabled": true,
+      "dealScoring": false,
+      "filters": {
+        "minPrice": 60000,
+        "maxPrice": 300000,
+        "minBeds": 2,
+        "minBaths": 1,
+        "minSqft": 700,
+        "minYearBuilt": null,
+        "maxYearBuilt": null,
+        "maxHoaMonthly": 250,
+        "maxPricePerSqft": null,
+        "maxDaysOnMarket": null,
+        "propertyTypes": [
+          "Single Family Residential",
+          "Townhouse",
+          "Multi-Family (2-4 Unit)",
+          "Multi-Family (5+ Unit)"
+        ],
+        "excludeKeywords": [
+          "55+",
+          "Age Restricted",
+          "Senior",
+          "Income Restricted"
+        ]
+      },
+      "cashflow": {
+        "minRentToPricePct": 1,
+        "strUpliftFactor": 1.6,
+        "strOccupancy": 0.65,
+        "minRentComps": 4,
+        "entryDiscountWeight": 0.6,
+        "maxRows": 12,
+        "conditionFloor": 0.6,
+        "ratioScoreCap": 2,
+        "maxRehabRows": 6
+      }
     }
   ],
   "jev": {
