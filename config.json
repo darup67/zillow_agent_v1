@@ -204,19 +204,21 @@
       "filters": {
         "minPrice": 60000,
         "maxPrice": 300000,
-        "minBeds": 2,
+        "minBeds": 1,
         "minBaths": 1,
-        "minSqft": 700,
+        "minSqft": 550,
         "minYearBuilt": null,
         "maxYearBuilt": null,
-        "maxHoaMonthly": 250,
+        "maxHoaMonthly": 350,
         "maxPricePerSqft": null,
         "maxDaysOnMarket": null,
         "propertyTypes": [
           "Single Family Residential",
           "Townhouse",
           "Multi-Family (2-4 Unit)",
-          "Multi-Family (5+ Unit)"
+          "Multi-Family (5+ Unit)",
+          "Condo/Co-op",
+          "Unknown"
         ],
         "excludeKeywords": [
           "55+",
@@ -234,7 +236,10 @@
         "maxRows": 12,
         "conditionFloor": 0.6,
         "ratioScoreCap": 2,
-        "maxRehabRows": 6
+        "maxRehabRows": 6,
+        "duplexUnits": 2,
+        "plexUnits": 5,
+        "sharedLivingMinBeds": 4
       }
     }
   ],

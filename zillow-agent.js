@@ -659,20 +659,30 @@ function screenStr(matched, comps, s) {
   const medians = new Map();
   for (const [z, a] of byZip) medians.set(z, median(a));
 
+  const unitsFor = (l) => {
+    if (/Multi-Family \(2-4/.test(l.propertyType || '')) return cf.duplexUnits ?? 2;
+    if (/Multi-Family \(5\+/.test(l.propertyType || '')) return cf.plexUnits ?? 5;
+    return 1;
+  };
   const rows = [];
   let noComp = 0;
   for (const l of matched) {
     if (!l.price) continue;
-    const rc = rentFor(comps, l.zip, l.beds, minN);
+    const rawUnits = unitsFor(l);
+    const unitsTrusted = l.beds != null && l.beds >= rawUnits;
+    const units = unitsTrusted ? rawUnits : 1;
+    const perUnitBeds = units > 1 && l.beds ? Math.max(1, Math.round(l.beds / units)) : l.beds;
+    const rc = rentFor(comps, l.zip, perUnitBeds, minN);
     if (!rc) { noComp++; continue; }
-    const ltrRatio = (rc.rent / l.price) * 100;
+    const grossRent = rc.rent * units;
+    const ltrRatio = (grossRent / l.price) * 100;
     if (cf.minRentToPricePct != null && ltrRatio < cf.minRentToPricePct) continue;
     const hoa = l.hoa || 0;
     const zipMed = medians.get(l.zip);
     const disc = (zipMed && l.ppsf) ? ((zipMed - l.ppsf) / zipMed) * 100 : 0;
     // STR gross is an ASSUMPTION — long-term rent x uplift x occupancy. There is
     // no nightly-rate or occupancy feed here; see the note the email carries.
-    const strGross = Math.round(rc.rent * (cf.strUpliftFactor ?? 1.6) * (cf.strOccupancy ?? 0.65));
+    const strGross = Math.round(grossRent * (cf.strUpliftFactor ?? 1.6) * (cf.strOccupancy ?? 0.65));
     const condRatio = (zipMed && l.ppsf) ? l.ppsf / zipMed : null;
     const floor = cf.conditionFloor ?? 0.60;
     const tier = (condRatio != null && condRatio < floor) ? 'rehab' : 'ready';
@@ -681,20 +691,35 @@ function screenStr(matched, comps, s) {
     const ratioTerm = Math.min(ltrRatio, cf.ratioScoreCap ?? 2.0) * 10;
     const score = ratioTerm + disc * (cf.entryDiscountWeight ?? 0.6) - hoa / 25;
     const flags = [];
+    if (units > 1) flags.push(`modeled as ${units} units @ ${perUnitBeds}bd each`);
+    if (rawUnits > 1 && !unitsTrusted) flags.push(
+      `listed ${esc(l.propertyType || "multi-unit")} but only ${l.beds ?? "?"}bd — unit count unclear, modeled as ONE unit`);
+    const sharedMinBeds = cf.sharedLivingMinBeds ?? 4;
+    const shared = l.beds != null && l.beds >= sharedMinBeds &&
+                   (l.baths == null || l.beds > l.baths);
+    if (shared) flags.push(`${l.beds}bd shared-living / rent-by-room candidate`);
     if (condRatio != null && condRatio < 0.75) flags.push(`priced ${Math.round((1 - condRatio) * 100)}% below ZIP $/sqft — verify condition`);
     if (l.yearBuilt != null && l.yearBuilt < 1970) flags.push(`built ${l.yearBuilt}`);
     if (l.dom != null && l.dom >= 90) flags.push(`${l.dom}d on market`);
-    rows.push({ ...l, estRent: rc.rent, rentComps: rc.n, rentExact: rc.exact, rentBeds: rc.beds,
+    rows.push({ ...l, estRent: grossRent, unitRent: rc.rent, units, rawUnits, unitsTrusted, perUnitBeds, shared, rentComps: rc.n, rentExact: rc.exact, rentBeds: rc.beds,
                 ltrRatio, strGross, strRatio: (strGross / l.price) * 100,
                 zipMedianPpsf: zipMed, discountPct: disc, condRatio, tier, flags, score });
   }
   rows.sort((a, b) => b.score - a.score);
-  const ready = rows.filter(r => r.tier === 'ready');
   const rehab = rows.filter(r => r.tier === 'rehab');
-  const cap = cf.maxRows ?? 15;
-  return { rows: ready.slice(0, cap), rehabRows: rehab.slice(0, cf.maxRehabRows ?? 6),
-           total: ready.length, rehabTotal: rehab.length,
-           screened: matched.length, noComp, medians };
+  const ok = rows.filter(r => r.tier !== 'rehab');
+  const multi = ok.filter(r => r.units > 1 || r.rawUnits > 1);
+  const shared = ok.filter(r => r.units === 1 && r.rawUnits === 1 && r.shared);
+  const ready = ok.filter(r => r.units === 1 && r.rawUnits === 1 && !r.shared);
+  const cap = cf.maxRows ?? 12;
+  const typeMix = {};
+  for (const r of ok) typeMix[r.propertyType || 'Unknown'] = (typeMix[r.propertyType || 'Unknown'] || 0) + 1;
+  return {
+    rows: ready.slice(0, cap), total: ready.length,
+    multiRows: multi.slice(0, cf.maxMultiRows ?? 8), multiTotal: multi.length,
+    sharedRows: shared.slice(0, cf.maxSharedRows ?? 8), sharedTotal: shared.length,
+    rehabRows: rehab.slice(0, cf.maxRehabRows ?? 6), rehabTotal: rehab.length,
+    typeMix, screened: matched.length, noComp, medians };
 }
 
 function strRow(l, i) {
@@ -730,9 +755,9 @@ function renderStrBlock(s, res) {
     margin:38px 0 2px;padding:9px 10px;background:#0f2e1d;color:#eafff2;
     border-left:4px solid #1a7f37;border-radius:3px">
     ${esc(s.name)}
-    <span style="color:#9fd4b4;font-weight:400;font-size:13px"> &middot; ${res.total} qualify &middot; showing ${res.rows.length}</span></h2>`;
+    <span style="color:#9fd4b4;font-weight:400;font-size:13px"> &middot; ${res.total} rent-ready &middot; ${res.multiTotal} multi-unit &middot; ${res.sharedTotal} shared-living &middot; ${res.rehabTotal} rehab</span></h2>`;
 
-  if (!res.rows.length && !(res.rehabRows && res.rehabRows.length)) {
+  if (!res.rows.length && !res.multiRows?.length && !res.sharedRows?.length && !res.rehabRows?.length) {
     return head + `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;
       font-size:13px;color:#888;padding:8px 10px">No candidates cleared the cash-flow screen today.</div>`;
   }
@@ -769,10 +794,29 @@ function renderStrBlock(s, res) {
       + tbl(res.rehabRows.map(strRow).join('\n'));
   }
 
-  const readyHead = `<h3 style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;
-    margin:14px 0 4px;color:#1a7f37">&#10003; Rent-ready candidates</h3>`;
+  const sub = (icon, title, note, rws, shown, tot, color) => rws && rws.length
+    ? `<h3 style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;
+        margin:22px 0 4px;color:${color}">${icon} ${title}
+        <span style="color:#999;font-weight:400"> &middot; ${tot} found, showing ${shown}</span></h3>
+        ${note ? `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:11px;color:#777;margin-bottom:6px">${note}</div>` : ''}`
+      + tbl(rws.map(strRow).join('\n'))
+    : '';
 
-  return head + readyHead + tbl(rows) + rehab + assumptions;
+  const multi = sub("&#127968;", "Duplex &amp; multi-unit",
+    "Redfin has no duplex type &mdash; these are its Multi-Family classes. Rent is modeled per unit and summed, " +
+    "so verify the actual unit count and whether all units are vacant or tenanted.",
+    res.multiRows, res.multiRows?.length, res.multiTotal, '#0b62c4');
+
+  const sharedSec = sub("&#128101;", "Shared living / rent-by-room",
+    "4+ bedrooms with more bedrooms than baths &mdash; the rent-by-room shape. Rent shown is a whole-house " +
+    "comp, which usually <em>understates</em> per-room income and ignores the higher management load.",
+    res.sharedRows, res.sharedRows?.length, res.sharedTotal, '#6b3fa0');
+
+  const readyHead = `<h3 style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;
+    margin:14px 0 4px;color:#1a7f37">&#10003; Rent-ready candidates
+    <span style="color:#999;font-weight:400"> &middot; ${res.total} found, showing ${res.rows.length}</span></h3>`;
+
+  return head + readyHead + tbl(rows) + multi + sharedSec + rehab + assumptions;
 }
 
 /* ------------------------------------------------------------------ main */
@@ -857,7 +901,9 @@ async function main() {
     const matched = sale.filter(l => passesFilters(l, s.filters));
     const res = screenStr(matched, rentComps, s);
     strResults.push({ search: s, ...res });
-    log(`  [${s.name}] ${matched.length} in price band · ${res.total} rent-ready, ${res.rehabTotal} rehab` +
+    log(`  [${s.name}] ${matched.length} in price band · ${res.total} rent-ready, ${res.multiTotal} multi-unit, ` +
+        `${res.sharedTotal} shared-living, ${res.rehabTotal} rehab · types: ` +
+        Object.entries(res.typeMix).map(([k, v]) => `${k}:${v}`).join(', ') +
         (res.noComp ? ` · ${res.noComp} skipped (no rent comp)` : ''));
   }
 
