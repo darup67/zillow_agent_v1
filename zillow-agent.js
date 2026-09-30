@@ -565,11 +565,7 @@ function renderEmail(results, cfg, stats, strResults = []) {
   const date = new Date().toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   });
-  let body = `<div style="max-width:720px;margin:0 auto;padding:16px">
-<h1 style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:20px;margin:0">
-  ${esc(cfg.email.subjectPrefix)}</h1>
-<div style="color:#666;font-size:13px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;margin-top:2px">
-  ${date} &middot; ${stats.zipCount} ZIPs &middot; ${results.length} searches</div>`;
+  let body = `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:13px;color:#111827">`;
 
   // Contents strip so each section is findable at a glance.
   body += `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:12px;
@@ -596,11 +592,22 @@ function renderEmail(results, cfg, stats, strResults = []) {
       <table style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:13px;color:#333">${rows}</table>`;
   }
 
-  body += `<div style="margin-top:28px;padding-top:10px;border-top:1px solid #ddd;color:#888;font-size:11px;
-    font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
-    Listing and rental data via Redfin. Tune each search in <code>~/zillow-agent/config.json</code>.</div></div>`;
-  return body;
+  body += `</div>`;
+  // Shared email layout: the headings inside the sections are normalized to one style; the header, footer and plain-text
+  // alternative come from ~/flip-notifier/email-ui.js.
+  const H = `style="margin:24px 0 8px;padding-bottom:6px;border-bottom:1px solid #e5e7eb;font:700 12px -apple-system,Segoe UI,Helvetica,Arial,sans-serif;letter-spacing:1px;text-transform:uppercase;color:#111827"`;
+  body = body.replace(/<h2 style="[^"]*">/g, `<h2 ${H}>`).replace(/<h3 style="[^"]*">/g, `<h3 ${H}>`).replace(/border-top:3px double #1a7f37/g, 'border-top:1px solid #e5e7eb');
+  const tracked = results.reduce((a, r) => a + r.tracked, 0), changes = results.reduce((a, r) => a + r.changeCount, 0);
+  return {
+    kind: 'Daily digest · Real estate', status: { text: `${changes} change${changes === 1 ? '' : 's'}`, tone: changes ? 'info' : 'neutral' },
+    title: 'Atlanta Real Estate Digest: New Listings, Price Cuts, Deals and Rental Cash-Flow Screen',
+    subtitle: `${date} · ${stats.zipCount} ZIP codes · ${results.length} saved searches · ${tracked} listings tracked`,
+    sections: [{ blocks: [{ type: 'raw', html: body, text: body.replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/g, ' ').replace(/\s+/g, ' ').trim() }] }],
+    footer: 'Listing and rental data via Redfin. Sent by the Zillow Agent (~/zillow-agent); tune each search in config.json.',
+  };
 }
+
+
 
 /* ------------------------------------------------------ STR cash-flow screen */
 
@@ -937,11 +944,13 @@ async function main() {
 
   const totalChanges = results.reduce((a, r) => a + r.changeCount, 0);
   const stats = { zipCount: allZips.length };
-  const html = renderEmail(results, cfg, stats, strResults);
+  const spec = renderEmail(results, cfg, stats, strResults);
+  const UI = require(path.join(require('os').homedir(), 'flip-notifier', 'email-ui.js'));
 
   if (DRY_RUN) {
     const outPath = path.join(DIR, 'preview.html');
-    fs.writeFileSync(outPath, html);
+    fs.writeFileSync(outPath, UI.render(spec).html);
+    if (ARGS.has('--email-test')) { UI.send('Zillow Agent · Atlanta Market Digest (sample of the new layout)', spec, { timeoutMs: 60000 }); log('sample email sent (dry run: state not saved)'); }
     log(`dry run — preview written to ${outPath} (no email, state not saved)`);
     return;
   }
@@ -956,14 +965,14 @@ async function main() {
           || 'update';
       const strTag = strResults.filter(r => r.rows.length)
         .map(r => `${r.search.shortName || 'STR'} ${r.total}`).join(', ');
-      const subject = `${cfg.email.subjectPrefix} — ${tag}${strTag ? ` | ${strTag}` : ''}`;
+      const subject = `Zillow Agent · ${cfg.email.subjectPrefix}: ${tag}${strTag ? ` | ${strTag}` : ''}`;
       // A network blip must not cost the day's digest: retry with pauses, and
       // if every try fails keep the old state so tomorrow re-reports today's
       // changes instead of treating them as already seen.
       let sent = false;
       for (let n = 1; n <= 3 && !sent; n++) {
         try {
-          execFileSync(process.execPath, [path.join(DIR, 'send-email.js'), subject, html, '--html'], { stdio: 'inherit' });
+          UI.send(subject, spec, { timeoutMs: 60000 });
           log(`email sent: ${subject}`);
           sent = true;
         } catch (e) {
