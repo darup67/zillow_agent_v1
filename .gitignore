@@ -20,3 +20,7 @@ config.json.bak
 # Jev tag cache and review log (listing remarks)
 jev-cache.json
 jev-tags.jsonl
+
+# Dashboard data (listing details) and logs
+digests/
+dashboard.*.log

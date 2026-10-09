@@ -955,6 +955,24 @@ async function main() {
     return;
   }
 
+  // Dashboard export (~/zillow-agent/dashboard.py, added 2026-10-09). Never affects the email or state: any failure is only logged.
+  if (!DRY_RUN) {
+    try {
+      const slim = l => { const o = {}; for (const k of ['id','address','city','zip','propertyType','price','prevPrice','changePct','beds','baths','sqft','yearBuilt','dom','ppsf','hoa','status','prevStatus','url','discountPct','zipMedianPpsf','estRent','ltrRatio','strGross','tier','flags','score','units','openHouse']) if (l[k] != null) o[k] = l[k]; return o; };
+      const cap = (arr, n = 80) => (arr || []).slice(0, n).map(slim);
+      const digest = { t: new Date().toISOString(), firstRun, zips: allZips.length, pool: { sale: sale.length, rental: rent.length },
+        searches: results.map(r => ({ id: r.search.id, name: r.search.name, type: r.search.type, tracked: r.matched.length,
+          counts: { new: r.changes.new.length, priceCuts: r.changes.priceCuts.length, priceIncreases: r.changes.priceIncreases.length, backOnMarket: r.changes.backOnMarket.length, gone: r.changes.gone.length, value: r.deals.underMedian.length, motivated: r.deals.motivated.length },
+          new: cap(r.changes.new), priceCuts: cap(r.changes.priceCuts), priceIncreases: cap(r.changes.priceIncreases, 30), backOnMarket: cap(r.changes.backOnMarket, 30), underMedian: cap(r.deals.underMedian, 40), motivated: cap(r.deals.motivated, 40) })),
+        str: strResults.map(r => ({ id: r.search.id, name: r.search.name, total: r.total, multiTotal: r.multiTotal, sharedTotal: r.sharedTotal, rehabTotal: r.rehabTotal, screened: r.screened,
+          rows: cap(r.rows, 20), multiRows: cap(r.multiRows, 12), sharedRows: cap(r.sharedRows, 12), rehabRows: cap(r.rehabRows, 8) })) };
+      fs.mkdirSync(path.join(DIR, 'digests'), { recursive: true });
+      const day = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+      fs.writeFileSync(path.join(DIR, 'digests', `${day}.json`), JSON.stringify(digest));
+      fs.appendFileSync(path.join(DIR, 'digests', 'history.jsonl'), JSON.stringify({ day, t: digest.t, pool: digest.pool, searches: digest.searches.map(s => ({ id: s.id, tracked: s.tracked, ...s.counts })), str: digest.str.map(s => ({ id: s.id, total: s.total, screened: s.screened })) }) + '\n');
+    } catch (e) { log(`dashboard export failed (email unaffected): ${e.message}`); }
+  }
+
   if (!NO_EMAIL) {
     const strRows = strResults.reduce((a, r) => a + r.rows.length, 0);
     if (totalChanges === 0 && strRows === 0 && !cfg.email.sendWhenNothingNew) {
