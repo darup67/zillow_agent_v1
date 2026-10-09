@@ -185,7 +185,22 @@ class H(BaseHTTPRequestHandler):
         pass
 
 
+def set_password():
+    import getpass
+    pw = getpass.getpass("New Zillow dashboard password (hidden, 10+ characters): ").strip()
+    if len(pw) < 10 or getpass.getpass("Type it again: ").strip() != pw:
+        sys.exit("too short or did not match; nothing changed")
+    subprocess.run(["/usr/bin/security", "delete-generic-password", "-s", "zillow-dashboard-pass"], capture_output=True)
+    r = subprocess.run(["/usr/bin/security", "add-generic-password", "-a", "zillow", "-s", "zillow-dashboard-pass", "-w", pw], capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"Keychain write failed: {r.stderr.strip()}")
+    print("Saved. Restart:  launchctl kickstart -k gui/$(id -u)/com.dhruv.zillowdash")
+
+
 if __name__ == "__main__":
+    if "--set-password" in sys.argv:
+        set_password()
+        sys.exit(0)
     PASSWORD = password()
     host = "0.0.0.0" if PASSWORD else "127.0.0.1"
     print(f"zillow digest dashboard on http://{host}:{PORT} ({'password required from other devices' if PASSWORD else 'this Mac only'})", flush=True)
