@@ -3,7 +3,11 @@
   "email": {
     "to": "darup67@gmail.com",
     "subjectPrefix": "Atlanta Market Digest",
-    "sendWhenNothingNew": false
+    "sendWhenNothingNew": false,
+    "also": [
+      "janki.patel@hotworx.net",
+      "Jankimpatel3@gmail.com"
+    ]
   },
   "markets": [
     {

@@ -998,6 +998,11 @@ async function main() {
           if (n < 3) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60000 * n);
         }
       }
+      // Extra recipients (cfg.email.also): a separate send after the owner's succeeded, so a bad address can never cost the owner's digest.
+      if (sent && Array.isArray(cfg.email.also) && cfg.email.also.length) {
+        try { UI.send(subject, spec, { timeoutMs: 60000, to: cfg.email.also.join(',') }); log(`email also sent to ${cfg.email.also.length} extra recipient(s)`); }
+        catch (e) { log(`extra-recipient send failed (owner's email unaffected): ${e.message}`); }
+      }
       if (!sent) {
         log('state NOT saved — changes will be reported again next run');
         process.exitCode = 1;
