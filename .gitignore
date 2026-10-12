@@ -24,3 +24,7 @@ jev-tags.jsonl
 # Dashboard data (listing details) and logs
 digests/
 dashboard.*.log
+multi-cache.json
+multi-pool.json
+multi-state.json
+multi-prefetch.*.log

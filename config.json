@@ -123,7 +123,7 @@
   "searches": [
     {
       "id": "primary",
-      "name": "Primary buy box — houses 2005+",
+      "name": "Primary buy box \u2014 houses 2005+",
       "shortName": "primary",
       "type": "sale",
       "enabled": true,
@@ -154,7 +154,7 @@
     },
     {
       "id": "condos-small",
-      "name": "Condos & townhomes, 1–2 bedroom",
+      "name": "Condos & townhomes, 1\u20132 bedroom",
       "shortName": "condos",
       "type": "sale",
       "enabled": true,
@@ -183,7 +183,7 @@
     },
     {
       "id": "rentals",
-      "name": "Rentals, 1–2 bedroom",
+      "name": "Rentals, 1\u20132 bedroom",
       "shortName": "rentals",
       "type": "rental",
       "enabled": true,
@@ -198,7 +198,7 @@
     },
     {
       "id": "str-cashflow",
-      "name": "STR / rental investment — under $300k",
+      "name": "STR / rental investment \u2014 under $300k",
       "shortName": "STR",
       "type": "sale",
       "mode": "rank",
@@ -244,6 +244,37 @@
         "duplexUnits": 2,
         "plexUnits": 5,
         "sharedLivingMinBeds": 4
+      }
+    },
+    {
+      "id": "multi-small",
+      "name": "Duplexes & triplexes (no heavy repairs)",
+      "shortName": "duplex/triplex",
+      "type": "sale",
+      "mode": "multi",
+      "separateSection": true,
+      "enabled": true,
+      "dealScoring": false,
+      "filters": {
+        "minPrice": 80000,
+        "maxPrice": 900000,
+        "minBeds": 2,
+        "minBaths": 1,
+        "propertyTypes": [
+          "Multi-Family (2-4 Unit)"
+        ],
+        "excludeKeywords": [
+          "55+",
+          "Age Restricted"
+        ]
+      },
+      "multi": {
+        "units": [
+          2,
+          3
+        ],
+        "maxFetch": 80,
+        "delayMs": 900
       }
     }
   ],

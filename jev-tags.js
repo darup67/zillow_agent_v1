@@ -156,4 +156,4 @@ async function tagListings(listings, cfg, log) {
       `(${fetched} pages fetched, cap ${jc.maxPerRun ?? 40})`);
 }
 
-module.exports = { tagListings, remarksFrom, labels, QUESTIONS };
+module.exports = { tagListings, remarksFrom, labels, QUESTIONS, getPage, CONDITION };

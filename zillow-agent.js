@@ -23,6 +23,7 @@ const path = require('path');
 const https = require('https');
 const { execFileSync } = require('child_process');
 const { tagListings } = require('./jev-tags');
+const { screenMulti } = require('./multi');
 
 const DIR = __dirname;
 const CONFIG_PATH = path.join(DIR, 'config.json');
@@ -561,7 +562,7 @@ function renderSearchBlock(s, res, cfg) {
   return header + body;
 }
 
-function renderEmail(results, cfg, stats, strResults = []) {
+function renderEmail(results, cfg, stats, strResults = [], multiResults = []) {
   const date = new Date().toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   });
@@ -570,7 +571,8 @@ function renderEmail(results, cfg, stats, strResults = []) {
   // Contents strip so each section is findable at a glance.
   body += `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:12px;
     color:#555;margin-top:10px;padding:8px 10px;background:#fafafa;border:1px solid #eee;border-radius:3px">` +
-    results.map(r => `${esc(r.search.name)}: <strong>${r.changeCount}</strong>`).join(' &nbsp;|&nbsp; ') + `</div>`;
+    results.map(r => `${esc(r.search.name)}: <strong>${r.changeCount}</strong>`).join(' &nbsp;|&nbsp; ') +
+    multiResults.map(r => ` &nbsp;|&nbsp; ${esc(r.search.shortName || 'duplex/triplex')}: <strong>${r.total}</strong>`).join('') + `</div>`;
 
   for (const r of results) body += renderSearchBlock(r.search, r, cfg);
 
@@ -580,6 +582,8 @@ function renderEmail(results, cfg, stats, strResults = []) {
     body += `<div style="margin:34px 0 0;border-top:3px double #1a7f37"></div>`;
     for (const r of strResults) body += renderStrBlock(r.search, r);
   }
+
+  for (const r of multiResults) body += renderMultiBlock(r.search, r);
 
   // ZIP median context from the first sale search that produced medians.
   const withMed = results.find(r => r.deals.medians && r.deals.medians.size);
@@ -608,6 +612,37 @@ function renderEmail(results, cfg, stats, strResults = []) {
 }
 
 
+
+
+/* ------------------------------------------------------ duplex / triplex section */
+
+function multiRow(l, i) {
+  const flag = (l.flags && l.flags.length) ? `<div style="font-size:11px;color:#b35900;margin-top:3px">&#9888; ${l.flags.map(esc).join(' &middot; ')}</div>` : '';
+  const badge = l.isNew ? `<span style="background:#1a7f37;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;margin-right:6px">NEW</span>` : '';
+  const cut = (l.prevPrice && l.changePct < 0) ? `<div style="font-size:12px;color:#1a7f37;margin-top:2px">&#9660; ${Math.abs(l.changePct).toFixed(1)}% from ${fmtMoney(l.prevPrice)}</div>`
+    : (l.prevPrice ? `<div style="font-size:12px;color:#b3261e;margin-top:2px">&#9650; ${l.changePct.toFixed(1)}% from ${fmtMoney(l.prevPrice)}</div>` : '');
+  const rent = l.estRent ? `<div style="font-size:12px;color:#444;margin-top:3px">rent est ~${fmtMoney(l.estRent)}/mo</div><div style="font-size:13px;color:#1a7f37;font-weight:600">${l.ltrRatio.toFixed(2)}% rent/price</div>` : '';
+  return `<tr>
+  <td style="padding:10px 6px;border-bottom:1px solid #e5e7eb;vertical-align:top;color:#999;font-size:12px">${i + 1}</td>
+  <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb;vertical-align:top">
+    ${badge}<a href="${esc(l.url)}" style="color:#0b62c4;text-decoration:none;font-weight:600">${esc(l.address || 'Undisclosed address')}</a>
+    <div style="color:#666;font-size:12px">${esc(l.city || '')} ${esc(l.zip)} &middot; <strong>${l.units === 3 ? 'Triplex' : 'Duplex'}</strong> (per the listing remarks)</div>
+    <div style="color:#444;font-size:12px;margin-top:3px">${detailLine(l)}</div>${flag}
+  </td>
+  <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb;text-align:right;vertical-align:top;white-space:nowrap">
+    <strong>${fmtMoney(l.price)}</strong>${cut}<div style="font-size:12px;color:#444;margin-top:3px">${fmtMoney(l.perUnit)} per unit</div>${rent}
+  </td>
+</tr>`;
+}
+
+function renderMultiBlock(s, res) {
+  const ex = res.excluded || {};
+  const head = `<h2 style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:17px;margin:38px 0 2px;padding:9px 10px;background:#1b2440;color:#eaf0ff;border-left:4px solid #3b6fe0;border-radius:3px">
+    ${esc(s.name)} <span style="color:#a9b8e8;font-weight:400;font-size:13px"> &middot; ${res.total} shown &middot; ${res.newCount} new &middot; ${res.cutCount} price cut${res.cutCount === 1 ? '' : 's'}</span></h2>`;
+  const note = `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:12px;color:#666;padding:6px 10px">Only listings whose remarks say duplex or triplex. Dropped from ${res.candidates} multi-family listings: <strong>${ex.heavyRepair || 0}</strong> described heavy repairs/damage/teardown, ${ex.fourPlus || 0} four-plexes, ${ex.unitsUnknown || 0} never state a unit count, ${ex.noRemarks || 0} remarks not read yet. Condition comes from the remarks only: always inspect.</div>`;
+  if (!res.rows.length) return head + note + `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:13px;color:#888;padding:8px 10px">No duplexes or triplexes cleared the screen today.</div>`;
+  return head + note + `<table style="width:100%;border-collapse:collapse;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px">${res.rows.slice(0, (s.multi || {}).maxRows ?? 40).map(multiRow).join('\n')}</table>`;
+}
 
 /* ------------------------------------------------------ STR cash-flow screen */
 
@@ -856,7 +891,8 @@ async function main() {
   const allSearches = loadSearches(cfg);
   // Rank-mode searches (the STR screen) are a standing ranked list, not a change
   // feed: they never diff, never touch state, and render in their own block.
-  const searches = allSearches.filter(x => x.mode !== 'rank');
+  const searches = allSearches.filter(x => x.mode !== 'rank' && x.mode !== 'multi');
+  const multiSearches = allSearches.filter(x => x.mode === 'multi');
   const rankSearches = allSearches.filter(x => x.mode === 'rank');
   const needSale = allSearches.some(s => s.type !== 'rental');
   const needRental = allSearches.some(s => s.type === 'rental');
@@ -914,6 +950,17 @@ async function main() {
         (res.noComp ? ` · ${res.noComp} skipped (no rent comp)` : ''));
   }
 
+  // Duplex / triplex screen: standing section, remarks decide unit count and condition (see multi.js).
+  const multiResults = [];
+  for (const s of multiSearches) {
+    const matched = sale.filter(l => passesFilters(l, s.filters));
+    try {
+      const helpers = { rentPerUnit: (l, units) => { const pb = Math.min(3, Math.max(1, l.beds ? Math.round(l.beds / units) : 2)); const rc = rentFor(rentComps, l.zip, pb, (s.cashflow || {}).minRentComps ?? 3); return rc ? rc.rent : null; } };
+      const res = await screenMulti(matched, s, cfg, log, helpers, { dry: DRY_RUN });
+      multiResults.push({ search: s, ...res });
+    } catch (e) { log(`  [${s.name}] screen failed (email unaffected): ${e.message}`); }
+  }
+
   // Tag the listings the email leads with, in its own order, so the per-run cap
   // spends on what gets read first. Tags are shadow-only (see jev-tags.js).
   if (cfg.jev && cfg.jev.enabled && !firstRun) {
@@ -944,7 +991,7 @@ async function main() {
 
   const totalChanges = results.reduce((a, r) => a + r.changeCount, 0);
   const stats = { zipCount: allZips.length };
-  const spec = renderEmail(results, cfg, stats, strResults);
+  const spec = renderEmail(results, cfg, stats, strResults, multiResults);
   const UI = require(path.join(require('os').homedir(), 'flip-notifier', 'email-ui.js'));
 
   if (DRY_RUN) {
@@ -958,14 +1005,15 @@ async function main() {
   // Dashboard export (~/zillow-agent/dashboard.py, added 2026-10-09). Never affects the email or state: any failure is only logged.
   if (!DRY_RUN) {
     try {
-      const slim = l => { const o = {}; for (const k of ['id','address','city','zip','propertyType','price','prevPrice','changePct','beds','baths','sqft','yearBuilt','dom','ppsf','hoa','status','prevStatus','url','discountPct','zipMedianPpsf','estRent','ltrRatio','strGross','tier','flags','score','units','openHouse']) if (l[k] != null) o[k] = l[k]; return o; };
+      const slim = l => { const o = {}; for (const k of ['id','address','city','zip','propertyType','price','prevPrice','changePct','beds','baths','sqft','yearBuilt','dom','ppsf','hoa','status','prevStatus','url','discountPct','zipMedianPpsf','estRent','ltrRatio','strGross','tier','flags','score','units','openHouse','perUnit','unitRent','isNew','verified']) if (l[k] != null) o[k] = l[k]; return o; };
       const cap = (arr, n = 80) => (arr || []).slice(0, n).map(slim);
       const digest = { t: new Date().toISOString(), firstRun, zips: allZips.length, pool: { sale: sale.length, rental: rent.length },
         searches: results.map(r => ({ id: r.search.id, name: r.search.name, type: r.search.type, tracked: r.matched.length,
           counts: { new: r.changes.new.length, priceCuts: r.changes.priceCuts.length, priceIncreases: r.changes.priceIncreases.length, backOnMarket: r.changes.backOnMarket.length, gone: r.changes.gone.length, value: r.deals.underMedian.length, motivated: r.deals.motivated.length },
           new: cap(r.changes.new), priceCuts: cap(r.changes.priceCuts), priceIncreases: cap(r.changes.priceIncreases, 30), backOnMarket: cap(r.changes.backOnMarket, 30), underMedian: cap(r.deals.underMedian, 40), motivated: cap(r.deals.motivated, 40) })),
         str: strResults.map(r => ({ id: r.search.id, name: r.search.name, total: r.total, multiTotal: r.multiTotal, sharedTotal: r.sharedTotal, rehabTotal: r.rehabTotal, screened: r.screened,
-          rows: cap(r.rows, 20), multiRows: cap(r.multiRows, 12), sharedRows: cap(r.sharedRows, 12), rehabRows: cap(r.rehabRows, 8) })) };
+          rows: cap(r.rows, 20), multiRows: cap(r.multiRows, 12), sharedRows: cap(r.sharedRows, 12), rehabRows: cap(r.rehabRows, 8) })),
+        multi: multiResults.map(r => ({ id: r.search.id, name: r.search.name, total: r.total, candidates: r.candidates, newCount: r.newCount, cutCount: r.cutCount, excluded: r.excluded, rows: cap(r.rows, 60) })) };
       fs.mkdirSync(path.join(DIR, 'digests'), { recursive: true });
       const day = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
       fs.writeFileSync(path.join(DIR, 'digests', `${day}.json`), JSON.stringify(digest));
@@ -974,7 +1022,7 @@ async function main() {
   }
 
   if (!NO_EMAIL) {
-    const strRows = strResults.reduce((a, r) => a + r.rows.length, 0);
+    const strRows = strResults.reduce((a, r) => a + r.rows.length, 0) + multiResults.reduce((a, r) => a + r.newCount + r.cutCount, 0);
     if (totalChanges === 0 && strRows === 0 && !cfg.email.sendWhenNothingNew) {
       log('nothing new — skipping email');
     } else {

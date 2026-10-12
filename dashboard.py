@@ -101,6 +101,8 @@ def api(day=None):
         for s in dg["searches"]:
             for k in ("new", "priceCuts", "priceIncreases", "backOnMarket", "underMedian", "motivated"):
                 tag_items(s.get(k, []))
+        for s in dg.get("multi", []):
+            tag_items(s.get("rows", []))
         for s in dg.get("str", []):
             for k in ("rows", "multiRows", "sharedRows", "rehabRows"):
                 tag_items(s.get(k, []))

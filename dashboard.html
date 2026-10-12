@@ -60,7 +60,7 @@ select,input{background:var(--card);border:1px solid var(--line);color:var(--ink
 <div id="alert"></div>
 <section class="kpis" id="kpis"></section>
 <div class="cols"><section><div class="rebuilt" id="rebuilt" style="display:none"></div>
-<div class="bar"><div class="seg" id="s_search"></div><div class="seg" id="s_view"><button data-v="feed" class="on">Digest</button><button data-v="str">Investor picks</button></div></div>
+<div class="bar"><div class="seg" id="s_search"></div><div class="seg" id="s_view"><button data-v="feed" class="on">Digest</button><button data-v="str">Investor picks</button><button data-v="multi">Duplex &amp; triplex</button></div></div>
 <div class="bar"><select id="mkt"></select><input id="q" type="search" placeholder="Search address or ZIP"><select id="sort"><option value="def">Best first</option><option value="price_a">Price ↑</option><option value="price_d">Price ↓</option><option value="pct">Biggest change</option><option value="dom_d">Longest listed</option><option value="dom_a">Newest listed</option></select></div>
 <div class="meta"><span id="count"></span><span id="legend"></span></div><div class="rows" id="rows"></div><button class="more" id="morebtn" style="display:none"></button></section>
 <aside class="side"><div class="card sc"><h3>Market pulse <span>houses 2005+</span></h3><div class="stats" id="pulse"></div></div>
@@ -95,12 +95,12 @@ function controls(){const g=dg();if(!g)return;$("s_search").innerHTML=g.searches
 document.querySelectorAll("#s_view button").forEach(b=>b.classList.toggle("on",b.dataset.v===S.view));
 $("mkt").innerHTML=["All",...D.markets].map(m=>`<option ${S.mkt===m?"selected":""}>${m}</option>`).join("").replace(/<option( selected)?>All</,"<option value=\"All\"$1>All markets<");$("mkt").value=S.mkt;
 $("rebuilt").style.display=g.reconstructed?"block":"none";$("rebuilt").textContent="This day's digest was rebuilt from the saved state, so value deals and investor-pick listings fill in from the next 7:30 AM run. Counts above still come from that run's log."}
-function rowHTML(l,i,sig,view){const cut=l.changePct!=null,c=view==="str"?"var(--amb)":SIGS[sig][1],P=[];
+function rowHTML(l,i,sig,view){const cut=l.changePct!=null,c=view==="str"?"var(--amb)":view==="multi"?"var(--em)":SIGS[sig][1],P=[];
 const fx=[l.beds!=null?`${l.beds} bd`:"",l.baths!=null?`${l.baths} ba`:"",l.sqft?Number(l.sqft).toLocaleString()+" sqft":"",l.yearBuilt?`built ${l.yearBuilt}`:"",l.ppsf?`$${l.ppsf}/sqft`:""].filter(Boolean).map(t=>`<span>${t}</span>`).join("");
 if(l.dom!=null)P.push(`<span class="pill ${l.dom>=90?"y":""}">${l.dom}d listed</span>`);if(l.discountPct>=1)P.push(`<span class="pill g">${l.discountPct.toFixed(0)}% under ZIP $/sqft</span>`);if(l.prevStatus)P.push(`<span class="pill y">was ${esc(l.prevStatus)}</span>`);
-if(l.status&&l.status!=="Active")P.push(`<span class="pill y">${esc(l.status)}</span>`);if(l.openHouse)P.push(`<span class="pill g">open house</span>`);if(l.propertyType&&view==="str")P.push(`<span class="pill">${esc(l.propertyType.replace(/ \(.*/,""))}</span>`);
+if(l.status&&l.status!=="Active")P.push(`<span class="pill y">${esc(l.status)}</span>`);if(l.openHouse)P.push(`<span class="pill g">open house</span>`);if(view==="multi"){P.push(`<span class="pill g">${l.units===3?"Triplex":"Duplex"}</span>`);if(l.isNew)P.push(`<span class="pill g">NEW</span>`);if(l.perUnit)P.push(`<span class="pill">${money(l.perUnit)}/unit</span>`)}if(l.propertyType&&view==="str")P.push(`<span class="pill">${esc(l.propertyType.replace(/ \(.*/,""))}</span>`);
 (l.flags||[]).slice(0,2).forEach(f=>P.push(`<span class="pill y">${esc(f)}</span>`));
-const dl=view==="str"?`<span class="pill g">rent ~${money(l.estRent)}/mo</span>${l.ltrRatio?`<span class="mut">${l.ltrRatio.toFixed(2)}% of price</span>`:""}`:cut?`<span class="was num">${money(l.prevPrice)}</span><span class="pill ${l.changePct<0?"g":"r"}">${pct(l.changePct)}</span>`:"";
+const dl=view==="multi"&&!cut?(l.estRent?`<span class="pill g">rent ~${money(l.estRent)}/mo</span><span class="mut">${l.ltrRatio.toFixed(2)}% of price</span>`:""):view==="str"?`<span class="pill g">rent ~${money(l.estRent)}/mo</span>${l.ltrRatio?`<span class="mut">${l.ltrRatio.toFixed(2)}% of price</span>`:""}`:cut?`<span class="was num">${money(l.prevPrice)}</span><span class="pill ${l.changePct<0?"g":"r"}">${pct(l.changePct)}</span>`:"";
 return`<a class="card row" href="${esc(l.url||"#")}" target="_blank" rel="noopener noreferrer" style="--c:${c};animation-delay:${Math.min(i,12)*30}ms"><div><div class="ad">${esc(l.address||"")} <small>${esc(l.market||"")} · ${esc(l.zip||"")}</small></div><div class="fx">${fx}</div></div><div><div class="pr">${money(l.price)}</div><div class="dl">${dl}</div></div>${P.length?`<div class="tags">${P.join("")}</div>`:""}</a>`}
 function rows(){const g=dg(),box=$("rows");if(!g){box.innerHTML='<div class="empty">No digest yet. The next 7:30 AM run fills this in.</div>';return}
 let a,view=S.view,label;
@@ -108,6 +108,9 @@ if(view==="str"){const st=g.str&&g.str[0];if(!st){box.innerHTML='<div class="emp
 const tabs=[["rows","Rent-ready",st.total],["multiRows","Multi-unit",st.multiTotal],["sharedRows","Shared living",st.sharedTotal],["rehabRows","Rehab",st.rehabTotal]];
 $("legend").innerHTML=tabs.map(([k,l,n])=>`<a href="#" data-t="${k}" style="color:${S.strt===k?"var(--em)":"var(--mut)"};margin-left:12px;text-decoration:none;font-weight:600">${l} ${n}</a>`).join("");document.querySelectorAll("[data-t]").forEach(x=>x.onclick=e=>{e.preventDefault();S.strt=x.dataset.t;S.lim=30;save();rows()});
 a=(st[S.strt]||[]).slice();label=tabs.find(t=>t[0]===S.strt)[1]+" · short-term-rental gross is an assumption, not nightly-rate data"}
+else if(view==="multi"){const mu=g.multi&&g.multi[0];if(!mu){box.innerHTML='<div class="empty">The duplex &amp; triplex section arrives with the next 7:30 AM run.</div>';$("count").textContent="";$("legend").textContent="";$("morebtn").style.display="none";return}
+const ex=mu.excluded||{};$("legend").innerHTML=`<span class="mut" style="margin-left:12px">${mu.total} shown · ${mu.newCount||0} new · dropped from ${mu.candidates}: ${ex.heavyRepair||0} heavy repairs, ${ex.fourPlus||0} four-plexes, ${ex.unitsUnknown||0} unit count not stated, ${ex.noRemarks||0} remarks not read yet</span>`;
+a=(mu.rows||[]).slice();label="Duplexes &amp; triplexes · unit count and condition come from the listing remarks only, always inspect"}
 else{const s=srch(S.search);a=((s&&s[S.sig])||[]).slice();label=SIGS[S.sig][0];$("legend").textContent=""}
 if(S.mkt!=="All")a=a.filter(x=>x.market===S.mkt);if(S.q)a=a.filter(x=>((x.address||"")+" "+(x.zip||"")+" "+(x.city||"")).toLowerCase().includes(S.q));
 const so={price_a:(x,y)=>x.price-y.price,price_d:(x,y)=>y.price-x.price,pct:(x,y)=>Math.abs(y.changePct||0)-Math.abs(x.changePct||0),dom_d:(x,y)=>(y.dom||0)-(x.dom||0),dom_a:(x,y)=>(x.dom??1e9)-(y.dom??1e9)}[S.sort];if(so)a.sort(so);

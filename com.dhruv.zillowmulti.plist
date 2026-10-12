@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dhruv.zillowmulti</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/dhruvpatel/.local/bin/node</string>
+        <string>/Users/dhruvpatel/zillow-agent/multi-prefetch.js</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/dhruvpatel/zillow-agent</string>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Minute</key>
+        <integer>40</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/Users/dhruvpatel/zillow-agent/multi-prefetch.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/dhruvpatel/zillow-agent/multi-prefetch.err.log</string>
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>
