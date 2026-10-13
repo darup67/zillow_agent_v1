@@ -99,7 +99,7 @@ def api(day=None):
     dg, day = load_digest(day)
     if dg:
         for s in dg["searches"]:
-            for k in ("new", "priceCuts", "priceIncreases", "backOnMarket", "underMedian", "motivated"):
+            for k in ("new", "priceCuts", "priceIncreases", "backOnMarket", "underMedian", "motivated", "statusChanges", "gone"):
                 tag_items(s.get(k, []))
         for s in dg.get("multi", []):
             tag_items(s.get("rows", []))

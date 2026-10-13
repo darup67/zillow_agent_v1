@@ -1005,14 +1005,20 @@ async function main() {
   // Dashboard export (~/zillow-agent/dashboard.py, added 2026-10-09). Never affects the email or state: any failure is only logged.
   if (!DRY_RUN) {
     try {
-      const slim = l => { const o = {}; for (const k of ['id','address','city','zip','propertyType','price','prevPrice','changePct','beds','baths','sqft','yearBuilt','dom','ppsf','hoa','status','prevStatus','url','discountPct','zipMedianPpsf','estRent','ltrRatio','strGross','tier','flags','score','units','openHouse','perUnit','unitRent','isNew','verified']) if (l[k] != null) o[k] = l[k]; return o; };
+      const slim = l => { const o = {}; for (const k of ['id','address','city','zip','propertyType','price','prevPrice','changePct','beds','baths','sqft','yearBuilt','dom','ppsf','hoa','status','prevStatus','url','discountPct','zipMedianPpsf','estRent','ltrRatio','strGross','tier','flags','score','units','openHouse','perUnit','unitRent','isNew','verified','kind','name','rentMin','rentMax','bedMin','bedMax','bathMin','sqftMin','sqftMax','location','jevTags','lotSize']) if (l[k] != null) o[k] = l[k]; return o; };
       const cap = (arr, n = 80) => (arr || []).slice(0, n).map(slim);
+      const _tag = firstRun ? 'baseline' : results.filter(r => r.changeCount).map(r => `${r.search.shortName || r.search.name} ${r.changeCount}`).join(', ') || 'update';
+      const _strTag = strResults.filter(r => r.rows.length).map(r => `${r.search.shortName || 'STR'} ${r.total}`).join(', ');
+      const _subject = `Zillow Agent · ${cfg.email.subjectPrefix}: ${_tag}${_strTag ? ` | ${_strTag}` : ''}`;
       const digest = { t: new Date().toISOString(), firstRun, zips: allZips.length, pool: { sale: sale.length, rental: rent.length },
         searches: results.map(r => ({ id: r.search.id, name: r.search.name, type: r.search.type, tracked: r.matched.length,
           counts: { new: r.changes.new.length, priceCuts: r.changes.priceCuts.length, priceIncreases: r.changes.priceIncreases.length, backOnMarket: r.changes.backOnMarket.length, gone: r.changes.gone.length, value: r.deals.underMedian.length, motivated: r.deals.motivated.length },
-          new: cap(r.changes.new), priceCuts: cap(r.changes.priceCuts), priceIncreases: cap(r.changes.priceIncreases, 30), backOnMarket: cap(r.changes.backOnMarket, 30), underMedian: cap(r.deals.underMedian, 40), motivated: cap(r.deals.motivated, 40) })),
+          new: cap(r.changes.new), priceCuts: cap(r.changes.priceCuts), priceIncreases: cap(r.changes.priceIncreases, 60), backOnMarket: cap(r.changes.backOnMarket, 60), underMedian: cap(r.deals.underMedian, 60), motivated: cap(r.deals.motivated, 60),
+          statusChanges: cap(r.changes.statusChanges, 60), gone: cap(r.changes.gone, 60) })),
         str: strResults.map(r => ({ id: r.search.id, name: r.search.name, total: r.total, multiTotal: r.multiTotal, sharedTotal: r.sharedTotal, rehabTotal: r.rehabTotal, screened: r.screened,
           rows: cap(r.rows, 20), multiRows: cap(r.multiRows, 12), sharedRows: cap(r.sharedRows, 12), rehabRows: cap(r.rehabRows, 8) })),
+        meta: { subject: _subject, changes: totalChanges, tracked: results.reduce((a, r) => a + r.tracked, 0), searches: results.length, zips: allZips.length, recipients: { to: cfg.email.to, also: cfg.email.also || [] } },
+        medians: (() => { const w = results.find(r => r.deals && r.deals.medians && r.deals.medians.size); return w ? Object.fromEntries([...w.deals.medians.entries()].sort((a, b) => a[0].localeCompare(b[0]))) : {}; })(),
         multi: multiResults.map(r => ({ id: r.search.id, name: r.search.name, total: r.total, candidates: r.candidates, newCount: r.newCount, cutCount: r.cutCount, excluded: r.excluded, rows: cap(r.rows, 60) })) };
       fs.mkdirSync(path.join(DIR, 'digests'), { recursive: true });
       const day = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
