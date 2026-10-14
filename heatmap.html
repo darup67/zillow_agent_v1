@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atlanta Real Estate Heatmap</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>
+:root{--bg:#0e1512;--card:#142019;--line:#24352b;--ink:#e8efe9;--mut:#8ea597;--acc:#3ddc97;--amb:#ffb020}
+*{box-sizing:border-box}html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+#app{display:flex;height:100%}#side{width:330px;min-width:330px;background:var(--card);border-right:1px solid var(--line);overflow:auto;padding:12px 14px}
+#map{flex:1;min-width:0}h1{font-size:16px;margin:0 0 2px}.sub{color:var(--mut);font-size:12px;margin-bottom:10px}a{color:var(--acc)}
+h3{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin:14px 0 6px}
+.row{display:flex;align-items:center;gap:8px;padding:3px 0;cursor:pointer;user-select:none}.row input{margin:0}.sw{width:11px;height:11px;border-radius:50%;flex:none}.row .n{margin-left:auto;color:var(--mut)}
+select,input[type=number]{background:#0b120f;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 7px;width:100%;font:inherit}
+.seg{display:flex;gap:4px;flex-wrap:wrap}.seg label{border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer}.seg input{display:none}.seg input:checked+span{color:var(--acc);font-weight:700}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:6px}button{background:#0b120f;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 9px;cursor:pointer;font:inherit}
+table{width:100%;border-collapse:collapse;font-size:12px}th{color:var(--mut);text-align:left;font-weight:600;padding:3px 4px}td{padding:3px 4px;border-top:1px solid var(--line)}tr.z{cursor:pointer}tr.z:hover{background:#0b120f}.r{text-align:right}
+.leaflet-popup-content{font:12px/1.4 -apple-system,sans-serif;color:#111}.leaflet-popup-content a{color:#0a7d4f}
+#legend{position:absolute;right:10px;bottom:24px;z-index:500;background:rgba(14,21,18,.9);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:11px}
+#bar{position:absolute;left:340px;top:10px;z-index:500;background:rgba(14,21,18,.9);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+@media(max-width:800px){#app{flex-direction:column-reverse}#side{width:100%;min-width:0;height:45%}#bar{left:10px}}
+</style></head><body>
+<div id="app"><div id="side"></div><div id="map"></div></div><div id="bar"></div><div id="legend"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<script>
+const $=id=>document.getElementById(id),esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const COLORS={"Single family":"#3ddc97","Townhome":"#4da3ff","Condo":"#c084fc","Loft":"#f472b6","Duplex":"#ffb020","Triplex":"#ff7a3d","Fourplex":"#ef4444","Multi-family 2–4 (units unclear)":"#d4a373","Multi-family 5+":"#fde047","Mobile/manufactured":"#94a3b8","Land (not residential)":"#475569"};
+const ORDER=Object.keys(COLORS),col=c=>COLORS[c]||"#9ca3af";
+function cat(l){if(l.loft)return"Loft";const t=l.type||"";if(/^Multi-Family \(2-4/.test(t))return l.units==2?"Duplex":l.units==3?"Triplex":l.units==4?"Fourplex":"Multi-family 2–4 (units unclear)";
+ return{"Single Family Residential":"Single family","Townhouse":"Townhome","Condo/Co-op":"Condo","Multi-Family (5+ Unit)":"Multi-family 5+","Mobile/Manufactured Home":"Mobile/manufactured","Vacant Land":"Land (not residential)"}[t]||t}
+const usd=x=>x==null?"–":"$"+Math.round(x).toLocaleString(),med=a=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2},q=(a,p)=>{if(!a.length)return 1;const s=[...a].sort((x,y)=>x-y);return s[Math.min(s.length-1,Math.floor(p*s.length))]};
+const P=new URLSearchParams(location.search);
+const S={cats:null,metric:P.get("metric")||"density",area:P.get("area")||"",zip:P.get("zip")||"",minP:"",maxP:"",minB:"",heat:true,bub:true,pins:false,radius:22};
+let DATA=null,L_,map,heatL,bubL,pinL,renderer;
+function setZip(z){S.zip=z;if(z){S.pins=true;S.bub=false}else{S.pins=false;S.bub=true}}
+function filtered(){return DATA.listings.filter(l=>S.cats.has(l.c)&&(!S.area||DATA.areas[l.zip]===S.area)&&(!S.zip||l.zip===S.zip)&&(S.minP===""||l.price>=+S.minP)&&(S.maxP===""||l.price<=+S.maxP)&&(S.minB===""||(l.beds||0)>=+S.minB))}
+function weight(l,ref){return S.metric==="price"?Math.min(1,l.price/ref.price):S.metric==="ppsf"?Math.min(1,(l.ppsf||0)/ref.ppsf):S.metric==="dom"?Math.min(1,(l.dom||0)/180):1}
+function build(){const f=filtered(),ref={price:q(f.map(l=>l.price),.9)||1,ppsf:q(f.map(l=>l.ppsf||0),.9)||1};
+ if(heatL)map.removeLayer(heatL);if(bubL)map.removeLayer(bubL);if(pinL)map.removeLayer(pinL);
+ if(S.heat){heatL=L.heatLayer(f.map(l=>[l.lat,l.lng,weight(l,ref)]),{radius:S.radius,blur:S.radius*.8,maxZoom:14,minOpacity:.25,max:S.metric==="density"?Math.max(1.5,Math.sqrt(f.length)/12):1,gradient:{.2:"#2b6cb0",.45:"#3ddc97",.7:"#ffd34d",.9:"#ff5a36",1:"#b91c1c"}}).addTo(map)}
+ const by={};f.forEach(l=>(by[l.zip]=by[l.zip]||[]).push(l));
+ if(S.bub){bubL=L.layerGroup();Object.entries(by).forEach(([z,a])=>{const la=a.reduce((s,l)=>s+l.lat,0)/a.length,ln=a.reduce((s,l)=>s+l.lng,0)/a.length,mp=med(a.map(l=>l.price)),mf=med(a.filter(l=>l.ppsf).map(l=>l.ppsf)),dom=med(a.filter(l=>l.dom!=null).map(l=>l.dom)),tc={};a.forEach(l=>tc[l.c]=(tc[l.c]||0)+1);
+  const v=S.metric==="price"?mp:S.metric==="ppsf"?mf:S.metric==="dom"?dom:a.length,all=Object.values(by).map(b=>S.metric==="price"?med(b.map(l=>l.price)):S.metric==="ppsf"?med(b.filter(l=>l.ppsf).map(l=>l.ppsf)||[0]):S.metric==="dom"?med(b.filter(l=>l.dom!=null).map(l=>l.dom)):b.length).filter(x=>x!=null),lo=Math.min(...all),hi=Math.max(...all),t=hi>lo?(v-lo)/(hi-lo):.5,c=`hsl(${130-130*t},75%,52%)`;
+  const types=Object.entries(tc).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<a href="#" data-z="${z}" data-t="${esc(k)}">${esc(k)} ${n}</a>`).join(" · ");
+  L.circleMarker([la,ln],{radius:7+Math.sqrt(a.length)*1.6,color:"#fff",weight:1,fillColor:c,fillOpacity:.55}).bindPopup(`<b>${z}</b> · ${esc(DATA.areas[z]||"")}<br>${a.length} listings · median ${usd(mp)} · ${mf?"$"+Math.round(mf)+"/sqft":""} · ${dom==null?"":dom+" days on market"}<br>${types}`).addTo(bubL)});bubL.addTo(map)}
+ if(S.pins){pinL=L.layerGroup();f.forEach(l=>L.circleMarker([l.lat,l.lng],{renderer,radius:4,weight:1,color:"#0b120f",fillColor:col(l.c),fillOpacity:.9}).bindPopup(`<b>${esc(l.address)}</b>, ${esc(l.city)} ${l.zip}<br>${esc(l.c)} · ${usd(l.price)} · ${l.beds??"–"} bd / ${l.baths??"–"} ba · ${l.sqft?l.sqft.toLocaleString()+" sqft":""}<br>${l.dom!=null?l.dom+" days · ":""}${esc(l.status||"")}<br><a href="${esc(l.url)}" target="_blank" rel="noopener">View listing ↗</a>`).addTo(pinL));pinL.addTo(map)}
+ side(f,by);legend(f);bar(f)}
+function fit(){const f=filtered();if(f.length)map.fitBounds(L.latLngBounds(f.map(l=>[l.lat,l.lng])).pad(.08))}
+function legend(f){$("legend").innerHTML=`<b>${{density:"Listing density",price:"List price",ppsf:"$ per sqft",dom:"Days on market"}[S.metric]}</b><div style="height:8px;width:150px;margin:4px 0;background:linear-gradient(90deg,#2b6cb0,#3ddc97,#ffd34d,#ff5a36,#b91c1c)"></div><div style="display:flex;justify-content:space-between;color:var(--mut)"><span>low</span><span>high</span></div>`}
+function bar(f){$("bar").innerHTML=`<a href="/">← Digest</a> &nbsp;·&nbsp; <b>${f.length.toLocaleString()}</b> listings shown &nbsp;·&nbsp; median ${usd(med(f.map(l=>l.price)))}`}
+function side(f,by){const counts={};DATA.listings.forEach(l=>{if((!S.area||DATA.areas[l.zip]===S.area)&&(!S.zip||l.zip===S.zip))counts[l.c]=(counts[l.c]||0)+1});
+ const cats=[...new Set([...ORDER,...Object.keys(counts)])].filter(c=>counts[c]),areas=[...new Set(Object.values(DATA.areas))],zips=Object.keys(DATA.areas).filter(z=>!S.area||DATA.areas[z]===S.area).sort();
+ const zr=Object.entries(by).map(([z,a])=>[z,a.length,med(a.map(l=>l.price)),med(a.filter(l=>l.ppsf).map(l=>l.ppsf))]).sort((a,b)=>b[1]-a[1]);
+ $("side").innerHTML=`<h1>Real estate heatmap</h1><div class="sub">For-sale residential in the ${Object.keys(DATA.areas).length} digest ZIPs · updated ${esc((DATA.t||"").slice(0,16).replace("T"," "))} UTC · map data © OpenStreetMap / Esri · lofts are detected by name</div>
+ <h3>Property type</h3><div class="two" style="margin-bottom:4px"><button id="all">All</button><button id="none">None</button></div>${cats.map(c=>`<label class="row"><input type="checkbox" data-c="${esc(c)}" ${S.cats.has(c)?"checked":""}><span class="sw" style="background:${col(c)}"></span>${esc(c)}<span class="n">${counts[c]}</span></label>`).join("")}
+ <h3>Area</h3><select id="area"><option value="">All areas / counties</option>${areas.map(a=>`<option ${a===S.area?"selected":""}>${esc(a)}</option>`).join("")}</select><div style="height:6px"></div><select id="zip"><option value="">All ZIPs</option>${zips.map(z=>`<option ${z===S.zip?"selected":""}>${z}</option>`).join("")}</select>
+ <h3>Heat shows</h3><div class="seg">${[["density","Density"],["price","Price"],["ppsf","$/sqft"],["dom","Days on market"]].map(([k,t])=>`<label><input type="radio" name="m" value="${k}" ${S.metric===k?"checked":""}><span>${t}</span></label>`).join("")}</div>
+ <h3>Filters</h3><div class="two"><input type="number" id="minP" placeholder="Min price" value="${S.minP}"><input type="number" id="maxP" placeholder="Max price" value="${S.maxP}"><input type="number" id="minB" placeholder="Min beds" value="${S.minB}"><input type="range" id="rad" min="10" max="40" value="${S.radius}" title="heat radius"></div>
+ <h3>Layers</h3><label class="row"><input type="checkbox" id="lh" ${S.heat?"checked":""}>Heat</label><label class="row"><input type="checkbox" id="lb" ${S.bub?"checked":""}>ZIP bubbles</label><label class="row"><input type="checkbox" id="lp" ${S.pins?"checked":""}>Individual listings</label>
+ <h3>ZIPs · ${zr.length}</h3><table><tr><th>ZIP</th><th class="r">#</th><th class="r">Median</th><th class="r">$/sqft</th></tr>${zr.map(([z,n,m,pf])=>`<tr class="z" data-z="${z}"><td>${z}</td><td class="r">${n}</td><td class="r">${usd(m)}</td><td class="r">${pf?Math.round(pf):"–"}</td></tr>`).join("")}</table>`;
+ const re=()=>{build()};
+ document.querySelectorAll("#side [data-c]").forEach(e=>e.onchange=()=>{e.checked?S.cats.add(e.dataset.c):S.cats.delete(e.dataset.c);re()});
+ $("all").onclick=()=>{S.cats=new Set(Object.keys(counts));re()};$("none").onclick=()=>{S.cats=new Set();re()};
+ $("area").onchange=e=>{S.area=e.target.value;S.zip="";build();fit()};$("zip").onchange=e=>{setZip(e.target.value);build();fit()};
+ document.querySelectorAll("[name=m]").forEach(e=>e.onchange=()=>{S.metric=e.value;re()});
+ ["minP","maxP","minB"].forEach(k=>$(k).onchange=e=>{S[k]=e.target.value;re()});$("rad").oninput=e=>{S.radius=+e.target.value;re()};
+ $("lh").onchange=e=>{S.heat=e.target.checked;re()};$("lb").onchange=e=>{S.bub=e.target.checked;re()};$("lp").onchange=e=>{S.pins=e.target.checked;re()};
+ document.querySelectorAll("tr.z").forEach(r=>r.onclick=()=>{setZip(r.dataset.z);build();fit()})}
+document.addEventListener("click",e=>{const a=e.target.closest&&e.target.closest("a[data-z]");if(a){e.preventDefault();setZip(a.dataset.z);S.cats=new Set([a.dataset.t]);build();fit()}});
+fetch("/heatmap-data").then(r=>r.json()).then(d=>{DATA=d;if(!d.listings||!d.listings.length){$("side").innerHTML='<h1>Real estate heatmap</h1><div class="sub">No listing data yet. It is written by the 7:30 AM digest run (or <code>node zillow-agent.js --heat-only</code>).</div>';}
+ d.listings.forEach(l=>l.c=cat(l));
+ if(S.zip)setZip(S.zip);const want=P.get("type");S.cats=want?new Set(want.split(",")):new Set([...new Set(d.listings.map(l=>l.c))].filter(c=>c!=="Land (not residential)"));
+ map=L.map("map",{preferCanvas:true,zoomControl:true}).setView([33.85,-84.2],10);renderer=L.canvas({padding:.5});
+ const base={"Dark (Esri gray)":L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",{attribution:"Esri, HERE, Garmin, OpenStreetMap contributors",maxZoom:16}),"Light (Esri gray)":L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",{attribution:"Esri, HERE, Garmin, OpenStreetMap contributors",maxZoom:16}),"Street (OpenStreetMap)":L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap contributors",maxZoom:19}),"Satellite (Esri)":L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{attribution:"Esri, Maxar, Earthstar",maxZoom:19})};
+ base["Dark (Esri gray)"].addTo(map);L.control.layers(base,null,{position:"topright"}).addTo(map);
+ map.invalidateSize();setTimeout(()=>{map.invalidateSize();build();fit()},60)});
+</script></body></html>

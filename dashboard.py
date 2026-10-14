@@ -108,7 +108,7 @@ def api(day=None):
                 tag_items(s.get(k, []))
     hist = jl(os.path.join(HERE, "digests", "history.jsonl"))[-45:]
     zr, pulse = zip_table()
-    return {"now": now, "day": day, "days": digest_days(), "digest": dg, "history": hist, "zips": zr[:40], "pulse": pulse, "run": run_status(), "markets": MARKETS,
+    return {"heat": heat_summary(), "now": now, "day": day, "days": digest_days(), "digest": dg, "history": hist, "zips": zr[:40], "pulse": pulse, "run": run_status(), "markets": MARKETS,
             "hb_age": 0, "cycle_minutes": 24 * 60, "why": "daily digest at 7:30 AM ET"}
 
 
@@ -124,6 +124,50 @@ def password():
 
 PASSWORD = ""
 ICONS = {"/apple-touch-icon.png": "apple-touch-icon.png", "/apple-touch-icon-precomposed.png": "apple-touch-icon.png", "/favicon.ico": "apple-touch-icon.png", "/icon-512.png": "icon-512.png", "/manifest.webmanifest": None}
+
+
+
+_heat = {"t": 0, "v": None}
+
+
+def heat_pool():
+    """heat-pool.json (written by `zillow-agent.js`, all for-sale residential listings of the digest ZIPs with type + coordinates) enriched with duplex/triplex unit counts from multi-cache.json. Cached 60 s."""
+    if time.time() - _heat["t"] < 60 and _heat["v"] is not None:
+        return _heat["v"]
+    try:
+        p = json.load(open(os.path.join(HERE, "heat-pool.json")))
+    except (OSError, ValueError):
+        p = None
+    if p:
+        try:
+            mc = json.load(open(os.path.join(HERE, "multi-cache.json")))
+        except (OSError, ValueError):
+            mc = {}
+        for l in p["listings"]:
+            u = (mc.get(str(l["id"])) or {}).get("units")
+            if u:
+                l["units"] = u
+    _heat.update(t=time.time(), v=p)
+    return p
+
+
+def heat_summary():
+    """Compact summary for the digest UI: per area (county / market) -> ZIPs -> listing counts by property type, so every type in every ZIP can link to the heatmap."""
+    p = heat_pool()
+    if not p:
+        return None
+    zips, types = {}, {}
+    for l in p["listings"]:
+        LAB = {"Single Family Residential": "Single family", "Townhouse": "Townhome", "Condo/Co-op": "Condo", "Multi-Family (5+ Unit)": "Multi-family 5+", "Mobile/Manufactured Home": "Mobile/manufactured", "Vacant Land": "Land (not residential)"}
+        t = "Loft" if l.get("loft") else (({2: "Duplex", 3: "Triplex", 4: "Fourplex"}.get(l.get("units")) or "Multi-family 2–4 (units unclear)") if l["type"].startswith("Multi-Family (2-4") else LAB.get(l["type"], l["type"]))
+        z = zips.setdefault(l["zip"], {"area": p["areas"].get(l["zip"], ""), "n": 0, "counts": {}})
+        z["n"] += 1
+        z["counts"][t] = z["counts"].get(t, 0) + 1
+        types[t] = types.get(t, 0) + 1
+    areas = {}
+    for z, v in zips.items():
+        areas.setdefault(v["area"], []).append(z)
+    return {"t": p["t"], "types": types, "areas": {a: sorted(zs) for a, zs in areas.items()}, "zips": zips, "total": len(p["listings"])}
 
 
 class H(BaseHTTPRequestHandler):
@@ -174,6 +218,10 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         if u.path == "/api":
             body, ctype = dashauth.safe_json(api(parse_qs(u.query).get("day", [None])[0])).encode(), "application/json"
+        elif u.path == "/heatmap-data":
+            body, ctype = dashauth.safe_json(heat_pool() or {"listings": [], "areas": {}}).encode(), "application/json"
+        elif u.path in ("/heatmap", "/heatmap/"):
+            body, ctype = dashauth.with_kit(open(os.path.join(HERE, "heatmap.html"), "rb").read()), "text/html; charset=utf-8"
         else:
             body, ctype = dashauth.with_kit(open(os.path.join(HERE, "dashboard.html"), "rb").read()), "text/html; charset=utf-8"
         self.send_response(200)

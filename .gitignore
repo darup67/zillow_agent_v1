@@ -28,3 +28,5 @@ multi-cache.json
 multi-pool.json
 multi-state.json
 multi-prefetch.*.log
+heat-pool.json
+heat-run.log

@@ -275,6 +275,8 @@ function normalize(r) {
     openHouse: r[COL.ohStart] || null,
     url: r[COL.url],
     location: r[COL.location],
+    lat: num(r[COL.lat]),
+    lng: num(r[COL.lng]),
   };
 }
 
@@ -871,6 +873,24 @@ function loadSearches(cfg) {
   return [{ id: 'primary', name: 'Primary buy box', type: 'sale', filters: cfg.buyBox }];
 }
 
+
+/* --------------------------------------------------------------- heatmap pool */
+// Every for-sale residential listing of the digest's ZIPs with its property type and coordinates, for the heatmap page.
+// Lofts are not a Redfin type: a listing counts as a loft when its building/community name or address says so (heuristic).
+function writeHeatPool(sale, cfg) {
+  const areas = {};
+  for (const m of cfg.markets) for (const z of m.zips) areas[z] = m.name;
+  const listings = sale.filter(l => l.lat != null && l.lng != null && l.price).map(l => ({
+    id: l.id, address: l.address, city: l.city, zip: l.zip, type: l.propertyType || 'Other', price: l.price, beds: l.beds, baths: l.baths, sqft: l.sqft,
+    yr: l.yearBuilt, dom: l.dom, ppsf: l.ppsf, hoa: l.hoa, status: l.status, url: l.url, lat: l.lat, lng: l.lng,
+    loft: /\bloft/i.test(`${l.location || ''} ${l.address || ''}`) ? 1 : 0,
+  }));
+  try {
+    fs.writeFileSync(path.join(__dirname, 'heat-pool.json'), JSON.stringify({ t: new Date().toISOString(), areas, listings }));
+    log(`heat pool: ${listings.length} listings with coordinates`);
+  } catch (e) { log(`heat pool write failed: ${e.message}`); }
+}
+
 async function main() {
   const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 
@@ -895,7 +915,7 @@ async function main() {
   const multiSearches = allSearches.filter(x => x.mode === 'multi');
   const rankSearches = allSearches.filter(x => x.mode === 'rank');
   const needSale = allSearches.some(s => s.type !== 'rental');
-  const needRental = allSearches.some(s => s.type === 'rental');
+  const needRental = allSearches.some(s => s.type === 'rental') && !ARGS.has('--heat-only');
   const allZips = cfg.markets.flatMap(m => m.zips);
   log(`fetching ${allZips.length} ZIPs · ${allSearches.length} searches` +
       ` (${needSale ? 'sale' : ''}${needSale && needRental ? '+' : ''}${needRental ? 'rental' : ''})`);
@@ -922,6 +942,8 @@ async function main() {
   const dedupe = arr => { const s = new Set(); return arr.filter(l => s.has(l.id) ? false : (s.add(l.id), true)); };
   const sale = dedupe(salePool), rent = dedupe(rentPool);
   log(`pool: ${sale.length} unique for-sale, ${rent.length} unique rental (${totalTiles} tiles)`);
+  writeHeatPool(sale, cfg);                          // data for the property-type heatmap (heatmap.html on the dashboard)
+  if (ARGS.has('--heat-only')) { log('heat pool written (--heat-only): digest and email skipped'); return; }
 
   const results = [];
   for (const s of searches) {
