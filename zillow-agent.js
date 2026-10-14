@@ -1006,7 +1006,11 @@ async function main() {
   const prevTracked = Object.values(state.searches || {}).reduce((a, b) => a + Object.keys(b || {}).length, 0);
   const nowTracked = results.reduce((a, r) => a + r.matched.length, 0);
   const minFrac = (cfg.fetch && cfg.fetch.minTrackedFraction) || 0.6;
-  if (!firstRun && prevTracked > 100 && nowTracked < minFrac * prevTracked && !ARGS.has('--force')) {
+  // An intentional change of filters or ZIPs (config searches[].filters + markets) legitimately shrinks the tracked set: compare a signature of them with the one saved last run.
+  const filterSig = require('crypto').createHash('sha1').update(JSON.stringify([allSearches.map(s => [s.id, s.type, s.filters]), cfg.markets, cfg.priceCap || null])).digest('hex').slice(0, 12);
+  const filtersChanged = state.filterSig !== filterSig;
+  if (filtersChanged && !firstRun) log(`filters/ZIPs changed since the last saved run (${state.filterSig || 'none'} -> ${filterSig}): partial-fetch guard skipped, new baseline will be saved`);
+  if (!firstRun && !filtersChanged && prevTracked > 100 && nowTracked < minFrac * prevTracked && !ARGS.has('--force')) {
     log(`ABORT: tracked ${nowTracked} listings vs ${prevTracked} last run (< ${Math.round(minFrac * 100)}%). ` +
         `Likely a partial Redfin fetch; state NOT saved, no email. --force overrides.`);
     process.exitCode = 3;
@@ -1089,7 +1093,7 @@ async function main() {
     }
   }
 
-  const newState = { lastRun: new Date().toISOString(), searches: {} };
+  const newState = { lastRun: new Date().toISOString(), filterSig, searches: {} };
   for (const r of results) {
     const bucket = {};
     for (const l of r.matched) {
