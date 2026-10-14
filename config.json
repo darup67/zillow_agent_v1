@@ -171,7 +171,7 @@
         "minBaths": 1,
         "minSqft": 700,
         "maxSqft": null,
-        "minYearBuilt": 2005,
+        "minYearBuilt": 2017,
         "maxYearBuilt": null,
         "maxHoaMonthly": 500,
         "maxPricePerSqft": null,
@@ -186,7 +186,8 @@
         "excludeKeywords": [
           "55+",
           "Age Restricted"
-        ]
+        ],
+        "requireYearBuilt": true
       }
     },
     {
@@ -203,7 +204,7 @@
         "minBaths": 1,
         "minSqft": 450,
         "maxSqft": null,
-        "minYearBuilt": null,
+        "minYearBuilt": 2017,
         "maxYearBuilt": null,
         "maxHoaMonthly": 700,
         "maxPricePerSqft": null,
@@ -215,7 +216,8 @@
         "excludeKeywords": [
           "55+",
           "Age Restricted"
-        ]
+        ],
+        "requireYearBuilt": true
       }
     },
     {
@@ -248,7 +250,7 @@
         "minBeds": 1,
         "minBaths": 1,
         "minSqft": 550,
-        "minYearBuilt": null,
+        "minYearBuilt": 2017,
         "maxYearBuilt": null,
         "maxHoaMonthly": 350,
         "maxPricePerSqft": null,
@@ -266,7 +268,8 @@
           "Age Restricted",
           "Senior",
           "Income Restricted"
-        ]
+        ],
+        "requireYearBuilt": true
       },
       "cashflow": {
         "minRentToPricePct": 1,
@@ -303,7 +306,9 @@
         "excludeKeywords": [
           "55+",
           "Age Restricted"
-        ]
+        ],
+        "minYearBuilt": 2017,
+        "requireYearBuilt": true
       },
       "multi": {
         "units": [
@@ -325,6 +330,7 @@
   "priceCap": {
     "min": 0,
     "max": 500000,
-    "note": "user 2026-10-14: only properties $500,000 and under, from all criteria; $0 minimum"
+    "note": "user 2026-10-14: only properties $500,000 and under, from all criteria; $0 minimum",
+    "minYearBuilt": 2017
   }
 }

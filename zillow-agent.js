@@ -366,6 +366,7 @@ function passesFilters(l, f) {
   if (f.minSqft != null && l.sqft != null && l.sqft < f.minSqft) return false;
   if (f.maxSqft != null && l.sqft != null && l.sqft > f.maxSqft) return false;
   if (f.minYearBuilt != null && l.yearBuilt != null && l.yearBuilt < f.minYearBuilt) return false;
+  if (f.minYearBuilt != null && f.requireYearBuilt && l.yearBuilt == null) return false;     // user 2026-10-14: built 2017 or later; an unknown year does not qualify
   if (f.maxYearBuilt != null && l.yearBuilt != null && l.yearBuilt > f.maxYearBuilt) return false;
   if (f.maxHoaMonthly != null && l.hoa != null && l.hoa > f.maxHoaMonthly) return false;
   if (f.maxPricePerSqft != null && l.ppsf != null && l.ppsf > f.maxPricePerSqft) return false;
@@ -881,7 +882,7 @@ function writeHeatPool(sale, cfg) {
   const areas = {};
   for (const m of cfg.markets) for (const z of m.zips) areas[z] = m.name;
   const cap = (cfg.priceCap && cfg.priceCap.max) || 500000;     // user 2026-10-14: $500,000 and under, $0 minimum
-  const listings = sale.filter(l => l.lat != null && l.lng != null && l.price != null && l.price <= cap).map(l => ({
+  const listings = sale.filter(l => l.lat != null && l.lng != null && l.price != null && l.price <= cap && l.yearBuilt != null && l.yearBuilt >= ((cfg.priceCap && cfg.priceCap.minYearBuilt) || 2017)).map(l => ({
     id: l.id, address: l.address, city: l.city, zip: l.zip, type: l.propertyType || 'Other', price: l.price, beds: l.beds, baths: l.baths, sqft: l.sqft,
     yr: l.yearBuilt, dom: l.dom, ppsf: l.ppsf, hoa: l.hoa, status: l.status, url: l.url, lat: l.lat, lng: l.lng,
     loft: /\bloft/i.test(`${l.location || ''} ${l.address || ''}`) ? 1 : 0,
