@@ -880,7 +880,8 @@ function loadSearches(cfg) {
 function writeHeatPool(sale, cfg) {
   const areas = {};
   for (const m of cfg.markets) for (const z of m.zips) areas[z] = m.name;
-  const listings = sale.filter(l => l.lat != null && l.lng != null && l.price).map(l => ({
+  const cap = (cfg.priceCap && cfg.priceCap.max) || 500000;     // user 2026-10-14: $500,000 and under, $0 minimum
+  const listings = sale.filter(l => l.lat != null && l.lng != null && l.price != null && l.price <= cap).map(l => ({
     id: l.id, address: l.address, city: l.city, zip: l.zip, type: l.propertyType || 'Other', price: l.price, beds: l.beds, baths: l.baths, sqft: l.sqft,
     yr: l.yearBuilt, dom: l.dom, ppsf: l.ppsf, hoa: l.hoa, status: l.status, url: l.url, lat: l.lat, lng: l.lng,
     loft: /\bloft/i.test(`${l.location || ''} ${l.address || ''}`) ? 1 : 0,

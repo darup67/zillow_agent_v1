@@ -6,7 +6,7 @@ Zero dependencies (Node core only). Same house style as `~/flip-notifier`.
 ## Status
 
 - **51 ZIPs** across 7 markets — ~10,000 for-sale + ~3,250 rental listings
-  - Primary buy box (houses 2005+, $150k–750k): **3,934**
+  - Primary buy box (houses 2005+, $0–500k): **3,934**
   - Condos & townhomes 1–2BR ($100k–450k): **389**
   - Rentals 1–2BR ($900–3,000/mo): **978**
   - Full run ~3.5 min
@@ -100,7 +100,7 @@ adding another sale search costs no extra requests.
 ### `filters` — which listings qualify
 | Key | Effect |
 |---|---|
-| `minPrice` / `maxPrice` | price band (currently 150k–750k) |
+| `minPrice` / `maxPrice` | price band (currently $0–500k for every sale search) |
 | `minBeds` / `maxBeds` / `minBaths` | bed and bath bounds |
 | `minRent` / `maxRent` | **rental only** — monthly rent band |
 | `requireAvailableUnits` | **rental only** — drop communities with 0 units available |

@@ -165,8 +165,8 @@
       "type": "sale",
       "enabled": true,
       "filters": {
-        "minPrice": 150000,
-        "maxPrice": 750000,
+        "minPrice": 0,
+        "maxPrice": 500000,
         "minBeds": 2,
         "minBaths": 1,
         "minSqft": 700,
@@ -196,8 +196,8 @@
       "type": "sale",
       "enabled": true,
       "filters": {
-        "minPrice": 100000,
-        "maxPrice": 450000,
+        "minPrice": 0,
+        "maxPrice": 500000,
         "minBeds": 1,
         "maxBeds": 2,
         "minBaths": 1,
@@ -235,7 +235,7 @@
     },
     {
       "id": "str-cashflow",
-      "name": "STR / rental investment \u2014 under $300k",
+      "name": "STR / rental investment \u2014 under $500k",
       "shortName": "STR",
       "type": "sale",
       "mode": "rank",
@@ -243,8 +243,8 @@
       "enabled": true,
       "dealScoring": false,
       "filters": {
-        "minPrice": 60000,
-        "maxPrice": 300000,
+        "minPrice": 0,
+        "maxPrice": 500000,
         "minBeds": 1,
         "minBaths": 1,
         "minSqft": 550,
@@ -293,8 +293,8 @@
       "enabled": true,
       "dealScoring": false,
       "filters": {
-        "minPrice": 80000,
-        "maxPrice": 900000,
+        "minPrice": 0,
+        "maxPrice": 500000,
         "minBeds": 2,
         "minBaths": 1,
         "propertyTypes": [
@@ -321,5 +321,10 @@
     "showInEmail": true,
     "maxPerRun": 40,
     "delayMs": 1000
+  },
+  "priceCap": {
+    "min": 0,
+    "max": 500000,
+    "note": "user 2026-10-14: only properties $500,000 and under, from all criteria; $0 minimum"
   }
 }
