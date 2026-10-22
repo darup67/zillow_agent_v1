@@ -42,8 +42,16 @@ const BAD = [
 ];
 const NEG = /\b(?:no|not|without|free of|zero|never|nothing|none|isn'?t|hasn'?t|doesn'?t|don'?t)\W+(?:\w+\W+){0,3}$/i;
 
+// 2026-10-21 (found by a zero-shot pass over "units unknown" remarks): "4 bedrooms on each side" = duplex, and a count a few words before "units"
+// ("four currently occupied residential units", "4 renovated 1 BR/1 Bath units"). Bedrooms are never counted: "bed"/"br" right after the number is skipped.
+const SIDE = /\b(?:on |for )?(?:each|both|either|per) sides?\b|\bside[- ]by[- ]side\b|\bup(?:stairs)? and down(?:stairs)? units?\b/i;
+const NUM = { two: 2, three: 3, four: 4, five: 5, six: 6, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6 };
+const NUNITS = /\b(two|three|four|five|six|[2-6])\s+(?!(?:bed|br\b|bd\b|bath|ba\b|car|story|stories|acre|sq))(?:[\w/-]+\s+){0,4}?(?:residential |rental |separate |occupied |leased )?units\b/i;
 function unitsFrom(t) {
   const hits = [[FOUR, 4], [THREE, 3], [TWO, 2]].map(([re, n]) => { const m = re.exec(t); return m ? [m.index, n] : null; }).filter(Boolean);
+  const nu = NUNITS.exec(t);
+  if (nu) hits.push([nu.index, Math.min(NUM[nu[1].toLowerCase()], 4)]);
+  if (!hits.length && SIDE.test(t)) return 2;
   if (!hits.length) return null;
   hits.sort((a, b) => a[0] - b[0]);
   return hits[0][1];                                           // the earliest mention wins ("duplex ... could convert to a triplex" is a duplex)
