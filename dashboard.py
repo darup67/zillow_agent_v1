@@ -254,4 +254,8 @@ if __name__ == "__main__":
     PASSWORD = password()
     host = "0.0.0.0" if PASSWORD else "127.0.0.1"
     print(f"zillow digest dashboard on http://{host}:{PORT} ({'password required from other devices' if PASSWORD else 'this Mac only'})", flush=True)
+    try:                                                          # 2026-10-23 fd-leak guard (jev-client/fdsafe.py): raise the limit, close per-request connections, exit cleanly near the limit
+        import sys as _fs_sys; _fs_sys.path.insert(0, os.path.expanduser("~/jev-client")); import fdsafe; fdsafe.protect(H, "zillow")
+    except Exception as _fs_e:
+        print("fdsafe unavailable:", _fs_e, flush=True)
     ThreadingHTTPServer((host, int(os.environ.get("DASH_PORT", PORT))), H).serve_forever()
