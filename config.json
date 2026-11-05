@@ -293,7 +293,7 @@
       "type": "sale",
       "mode": "multi",
       "separateSection": true,
-      "enabled": true,
+      "enabled": false,
       "dealScoring": false,
       "filters": {
         "minPrice": 0,

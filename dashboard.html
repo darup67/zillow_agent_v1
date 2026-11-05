@@ -58,13 +58,29 @@ select,input{background:var(--card);border:1px solid var(--line);color:var(--ink
 </style><style id="emcss">.em{font-size:13.5px}.em .hd{margin:26px 0 4px;padding:9px 12px;border-left:4px solid var(--em);border-radius:8px;background:var(--card2);font-weight:700;font-size:16px}.em .hd small{color:var(--mut);font-weight:500;font-size:12.5px}
 .em h4{margin:16px 2px 4px;font-size:13.5px;color:var(--ink)}.em h4 span{color:var(--mut);font-weight:500}.em table{width:100%;border-collapse:collapse}.em td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}.em td.r{text-align:right;white-space:nowrap}
 .em a{color:var(--em);text-decoration:none;font-weight:600}.em .s{color:var(--mut);font-size:12px}.em .g{color:var(--up)}.em .w{color:var(--amb)}.em .j{color:#b79cff}.em .none{color:var(--mut);padding:8px 12px;font-size:12.5px}.em .strip{padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;color:var(--mut)}
-.em .nb{background:#1a7f37;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;margin-right:6px}.em .zg{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:2px 14px;font-size:12.5px}</style></head><body><main>
+.em .nb{background:#1a7f37;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;margin-right:6px}.em .zg{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:2px 14px;font-size:12.5px}</style><style id="mobile-fit">/* iPhone fit 2026-11-05 */
+@media (max-width:640px){
+main{padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right));padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+header{margin:0 -14px 14px;padding:calc(8px + env(safe-area-inset-top)) 14px 8px;gap:10px}
+.logo{width:34px;height:34px}h1{font-size:16px;white-space:nowrap}
+header select{max-width:132px;padding:7px 10px;font-size:16px}
+.status{padding:5px 10px;font-size:12px}
+.kpis{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px}
+.kpi{padding:11px 11px!important;min-width:0}.kpi svg,.kpi .spark,.kpi canvas{display:none!important}
+.kpi .v{font-size:26px!important}.kpi .d{font-size:11px!important;line-height:1.3}.kpi .l{font-size:11.5px!important}
+.bar{flex-direction:column;align-items:stretch!important;gap:8px}
+.seg{border-radius:14px!important;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;max-width:100%}.seg::-webkit-scrollbar{display:none}
+.seg button{flex:1 0 auto;white-space:nowrap;padding:8px 12px!important}
+input,select{font-size:16px!important}
+}
+</style>
+</head><body><main>
 <header><div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#07140f" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 12 4l9 8"/><path d="M6 10v10h12V10"/></svg></div><div><h1>Zillow Digest</h1><div class="sub" id="sub">Atlanta-area listings · read-only</div></div><div class="sp"></div>
 <select id="day" title="digest day" style="display:none"></select><div class="status"><span class="dot" id="dot"></span><span id="st">digest ok</span><span class="t2 mut" id="nx"></span></div></header>
 <div id="alert"></div>
 <section class="kpis" id="kpis"></section>
 <div class="cols"><section><div class="rebuilt" id="rebuilt" style="display:none"></div>
-<div class="bar"><div class="seg" id="s_search"></div><div class="seg" id="s_view"><button data-v="email" class="on">Email digest</button><button data-v="feed">Digest</button><button data-v="multi">Duplex &amp; triplex</button></div></div>
+<div class="bar"><div class="seg" id="s_search"></div><div class="seg" id="s_view"><button data-v="email" class="on">Email digest</button><button data-v="feed">Digest</button></div></div>
 <div class="bar"><select id="mkt"></select><input id="q" type="search" placeholder="Search address or ZIP"><select id="sort"><option value="def">Best first</option><option value="price_a">Price ↑</option><option value="price_d">Price ↓</option><option value="pct">Biggest change</option><option value="dom_d">Longest listed</option><option value="dom_a">Newest listed</option></select></div>
 <div class="meta"><span id="count"></span><span id="legend"></span></div><div class="rows" id="rows"></div><button class="more" id="morebtn" style="display:none"></button></section>
 <aside class="side"><div class="card sc"><h3>Market pulse <span>houses 2005+</span></h3><div class="stats" id="pulse"></div></div>

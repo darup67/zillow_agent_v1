@@ -100,6 +100,7 @@ def api(day=None):
     if dg:
         dg["searches"] = [s for s in dg.get("searches", []) if s.get("type") != "rental" and s.get("id") not in ("rentals", "str-cashflow")]      # rentals + STR removed 2026-11-05
         dg["str"] = []
+        dg["multi"] = []
         for s in dg["searches"]:
             for k in ("new", "priceCuts", "priceIncreases", "backOnMarket", "underMedian", "motivated", "statusChanges", "gone"):
                 tag_items(s.get(k, []))
