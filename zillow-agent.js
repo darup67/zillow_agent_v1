@@ -607,10 +607,10 @@ function renderEmail(results, cfg, stats, strResults = [], multiResults = []) {
   const tracked = results.reduce((a, r) => a + r.tracked, 0), changes = results.reduce((a, r) => a + r.changeCount, 0);
   return {
     kind: 'Daily digest · Real estate', status: { text: `${changes} change${changes === 1 ? '' : 's'}`, tone: changes ? 'info' : 'neutral' },
-    title: 'Atlanta Real Estate Digest: New Listings, Price Cuts, Deals and Rental Cash-Flow Screen',
+    title: 'Atlanta Real Estate Digest: New Listings, Price Cuts and Deals',
     subtitle: `${date} · ${stats.zipCount} ZIP codes · ${results.length} saved searches · ${tracked} listings tracked`,
     sections: [{ blocks: [{ type: 'raw', html: body, text: body.replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/g, ' ').replace(/\s+/g, ' ').trim() }] }],
-    footer: 'Listing and rental data via Redfin. Sent by the Zillow Agent (~/zillow-agent); tune each search in config.json.',
+    footer: 'Listing data via Redfin. Sent by the Zillow Agent (~/zillow-agent); tune each search in config.json.',
   };
 }
 
