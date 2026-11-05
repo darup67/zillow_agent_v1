@@ -225,7 +225,7 @@
       "name": "Rentals, 1\u20132 bedroom",
       "shortName": "rentals",
       "type": "rental",
-      "enabled": true,
+      "enabled": false,
       "filters": {
         "minBeds": 1,
         "maxBeds": 2,
@@ -242,7 +242,7 @@
       "type": "sale",
       "mode": "rank",
       "separateSection": true,
-      "enabled": true,
+      "enabled": false,
       "dealScoring": false,
       "filters": {
         "minPrice": 0,
