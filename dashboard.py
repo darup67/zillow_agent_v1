@@ -126,7 +126,7 @@ def password():
 
 
 PASSWORD = ""
-ICONS = {"/apple-touch-icon.png": "apple-touch-icon.png", "/apple-touch-icon-precomposed.png": "apple-touch-icon.png", "/favicon.ico": "apple-touch-icon.png", "/icon-512.png": "icon-512.png", "/manifest.webmanifest": None}
+ICONS = {"/apple-touch-icon.png": "apple-touch-icon.png", "/apple-touch-icon-precomposed.png": "apple-touch-icon.png", "/favicon.ico": "apple-touch-icon.png", "/icon-512.png": "icon-512.png", "/heatmap-icon.png": "heatmap-icon.png", "/heatmap-icon-512.png": "heatmap-icon-512.png", "/manifest.webmanifest": None}
 
 
 
